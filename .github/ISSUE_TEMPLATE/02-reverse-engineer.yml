@@ -1,0 +1,79 @@
+name: 🔍 Reverse Engineer Legacy System
+description: Analyze legacy codebase to extract architecture, APIs, and schemas for migration
+title: "[Reverse Engineer] "
+labels: ["reverse-engineer", "discovery", "migration"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🔍 Reverse Engineer - Legacy Analysis
+        
+        Analyze existing system before migration.
+        
+        **Provide repo URL** → Assign to @reverse-engineer → Get structured analysis!
+
+  - type: input
+    id: legacy_repo
+    attributes:
+      label: "🔗 Legacy Repository URL"
+      description: "GitHub URL of existing system to analyze"
+      placeholder: "https://github.com/bby-corp/adapt-notifications"
+    validations:
+      required: true
+
+  - type: input
+    id: feature_name
+    attributes:
+      label: "📁 Feature Name"
+      description: "What are we migrating? (for organizing docs)"
+      placeholder: "pickup-push-notification"
+    validations:
+      required: true
+
+  - type: textarea
+    id: focus_areas
+    attributes:
+      label: "🎯 Focus Areas (optional)"
+      description: "Specific aspects to analyze"
+      placeholder: |
+        - API endpoints and contracts
+        - Event schemas (Kafka topics)
+        - Data models and database schema
+        - Authentication/authorization patterns
+        - Configuration management
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## 🚀 Agent Instructions
+
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: "Agent Instructions"
+      description: "Auto-generated prompt (edit if needed, then assign to @reverse-engineer)"
+      value: |
+        ⚠️ **MUST invoke subagent `reverse-engineer` (agentName: "reverse-engineer") — DO NOT perform this work inline.**
+        
+        Create: docs/legacy-systems/{repo-name}/
+        
+        Extract (evidence-based):
+        ✅ Architecture overview
+        ✅ API endpoints and contracts
+        ✅ Event schemas (Kafka/messaging)
+        ✅ Data models and relationships
+        ✅ Configuration patterns
+        ✅ Patterns to migrate or avoid
+        ✅ Assumptions and clarifications needed
+        
+        Report: Path to analysis docs, key findings, recommended approach.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        **Next Step**: Use 📋 Specification template (with legacy context)

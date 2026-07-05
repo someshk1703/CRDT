@@ -1,0 +1,92 @@
+name: 🏁 Feature Intake
+description: Start a new feature - capture vision and goals
+title: "[Intake] "
+labels: ["intake", "discovery"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🏁 Feature Intake - Discovery Phase
+        
+        Starting point for any new feature or project.
+        
+        **Describe your idea** → Assign to @intake → Get structured intake doc!
+
+  - type: textarea
+    id: feature_idea
+    attributes:
+      label: "💡 What do you want to build?"
+      description: "High-level idea or business goal"
+      placeholder: |
+        Add real-time order tracking to mobile app
+        
+        Customers need visibility into delivery status.
+        Reduces support calls about "where is my order?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: "🎯 Why is this needed?"
+      description: "Business value, problem being solved"
+      placeholder: |
+        - 30% of support calls are order status inquiries
+        - Customer satisfaction metric needs improvement
+        - Competitive feature (Amazon, Walmart have this)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: is_migration
+    attributes:
+      label: "Is this a migration?"
+      description: "Replacing existing system or building new?"
+      options:
+        - "No - Greenfield (brand new)"
+        - "Yes - Migration from legacy system"
+    validations:
+      required: true
+
+  - type: input
+    id: legacy_repo
+    attributes:
+      label: "🔗 Legacy repo URL (if migration)"
+      description: "Leave blank if greenfield"
+      placeholder: "https://github.com/bby-corp/legacy-order-tracking"
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## 🚀 Agent Instructions
+
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: "Agent Instructions"
+      description: "Auto-generated prompt (edit if needed, then assign to @intake)"
+      value: |
+        ⚠️ **MUST invoke subagent `intake` (agentName: "intake") — DO NOT perform this work inline.**
+        
+        Create: docs/intake/{feature-name}.md
+        
+        Include:
+        ✅ Vision and business goals
+        ✅ Target users
+        ✅ Constraints (technical, timeline, resources)
+        ✅ Success criteria
+        ✅ Next step recommendation
+        
+        Report: Path to intake doc, recommended next step.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        **Next Steps**:
+        - If **migration** → Use 🔍 Reverse Engineer template
+        - If **greenfield** → Use 📋 Specification template

@@ -1,0 +1,79 @@
+name: ✅ Task Breakdown
+description: Generate 100+ executable tasks from implementation plan
+title: "[Tasks] "
+labels: ["tasks", "planning"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ✅ Tasks - Executable Breakdown
+        
+        Break implementation plan into 100+ executable tasks.
+        
+        **Provide plan path** → Run /speckit.tasks → Get tasks.md!
+
+  - type: input
+    id: plan_path
+    attributes:
+      label: "📁 Plan Directory Path"
+      description: "Path to feature plan directory"
+      placeholder: "specs/001-pickup-push-notification/"
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## 🚀 Agent Instructions (Step 1)
+
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: "Agent Instructions - Generate Tasks"
+      description: "Auto-generated command (edit if needed, then run in Copilot Chat)"
+      value: |
+        ⚠️ **MUST invoke subagent `speckit.tasks` (agentName: "speckit.tasks") — DO NOT perform this work inline.**
+        
+        Create: {plan_path}tasks.md
+        
+        Include:
+        ✅ 100+ executable tasks
+        ✅ Organized by phase and user story
+        ✅ [P] markers for parallel tasks
+        ✅ File paths for each task
+        ✅ Dependencies mapped
+        ✅ Estimation guidance
+        
+        Report: Path to tasks.md, total task count, phase breakdown.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        **Next Step**: Use 💻 Implementation Task template (for each task)
+        
+        <details>
+        <summary>📊 What gets generated</summary>
+        
+        **tasks.md structure**:
+        ```
+        ## Phase 1: Setup (8 tasks)
+        - [ ] T001 Create Gradle project
+        - [ ] T002 [P] Configure dependencies
+        - [ ] T003 [P] Setup Docker Compose
+        
+        ## Phase 2: Foundation (15 tasks)
+        - [ ] T010 Create domain entities
+        - [ ] T011 [P] Create repositories
+        
+        ## Phase 3: US1 - Device Registration (23 tasks)
+        - [ ] T021 DeviceController
+        - [ ] T022 DeviceService
+        - [ ] T023 DeviceRepository
+        
+        Total: 100+ tasks across all phases
+        ```
+        
+        </details>

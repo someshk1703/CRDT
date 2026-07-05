@@ -1,0 +1,98 @@
+name: 🐛 Bug Fix
+description: Quick bug fix assignment
+title: "[Bug] "
+labels: ["bug", "developer-agent"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🐛 Bug Fix
+        
+        **Describe the bug** → Assign to @developer-agent → Fixed!
+
+  - type: input
+    id: service_path
+    attributes:
+      label: "Service/Project"
+      description: "Which service has the bug? (agent will find it)"
+      placeholder: "order processing service"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: "Severity"
+      options:
+        - "🔴 Critical - Production down"
+        - "🟠 High - Feature broken"
+        - "🟡 Medium - Degraded experience"
+        - "🟢 Low - Minor issue"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "What's broken?"
+      placeholder: |
+        NPE in OrderService.calculateTotal when discount is null
+        
+        Steps to reproduce:
+        1. Create order without discount
+        2. Call calculateTotal()
+        3. NPE at line 42
+        
+        Expected: Should handle null gracefully
+    validations:
+      required: true
+
+  - type: input
+    id: file_location
+    attributes:
+      label: "File location (if known)"
+      placeholder: "services/order-service/src/.../OrderService.java:42"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: skip_spec
+    attributes:
+      label: "Skip spec workflow?"
+      description: "Bug fixes can skip /speckit.specify if urgent"
+      options:
+        - "Yes - Urgent fix needed"
+        - "No - Follow full workflow"
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## 🚀 Agent Instructions
+
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: "Agent Instructions"
+      description: "Auto-generated prompt (edit if needed, then assign to @developer-agent)"
+      value: |
+        ⚠️ **MUST invoke subagent `developer-agent` (agentName: "developer-agent") — DO NOT perform this work inline.**
+        
+        REQUIRED CHECKLIST:
+        ✅ Root cause identified
+        ✅ Minimal fix with proper error handling
+        ✅ Regression test added (MANDATORY)
+        ✅ All tests pass
+        ✅ Build succeeds + app starts
+        ✅ Bug no longer reproducible
+        
+        Commit message format:
+        "fix: brief description
+        
+        Urgent fix (skipped spec workflow per bug-fix template)."
+        
+        Report: test results, build output, evidence bug is fixed.
+    validations:
+      required: true

@@ -1,0 +1,118 @@
+name: 🧪 QA Testing Request
+description: Request QA validation after deployment to test/staging
+title: "[QA] "
+labels: ["qa", "testing", "qa-agent"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🧪 QA Testing Request
+        
+        Use this template to request QA validation from @qa-agent after deployment to test/staging environment.
+
+  - type: input
+    id: service_path
+    attributes:
+      label: "Service/Project"
+      description: "Which service is being tested? (agent will find it)"
+      placeholder: "pickup notification service"
+    validations:
+      required: true
+
+  - type: input
+    id: feature_spec
+    attributes:
+      label: "Feature Specification"
+      description: "Path to feature spec with acceptance criteria"
+      placeholder: "specs/001-pickup-push-notification/"
+    validations:
+      required: true
+
+  - type: input
+    id: pr_number
+    attributes:
+      label: "Pull Request Number"
+      description: "PR that was merged and deployed"
+      placeholder: "#123"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: "Test Environment URL"
+      description: "Where should QA test this feature?"
+      placeholder: "https://staging.pickup-notifications.bestbuy.com"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment_status
+    attributes:
+      label: "Deployment Status"
+      description: "Is the code deployed and ready for testing?"
+      options:
+        - "✅ Deployed to staging - ready for testing"
+        - "✅ Deployed to test - ready for testing"
+        - "⏳ Deployment in progress"
+        - "❌ Not yet deployed"
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional Notes (Optional)
+      description: Test data, known issues, specific focus areas, etc.
+      placeholder: |
+        Test Data:
+        - Store ID: 1234
+        - Device Token: [sample]
+        
+        Known Issues:
+        - Feature flag must be enabled
+        - Mock Kafka server in staging
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## 🤖 Agent Instructions
+
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: "Agent Instructions"
+      description: "Auto-generated prompt (will appear in issue body - copy to comment to run)"
+      value: |
+        ⚠️ **MUST invoke subagent `qa-agent` (agentName: "qa-agent") — DO NOT perform this work inline.**
+        
+        REQUIRED TESTING CHECKLIST:
+        1. ✅ Review acceptance criteria from spec.md
+        2. ✅ Execute functional tests for all user stories
+        3. ✅ Test positive and negative scenarios
+        4. ✅ Validate API responses per OpenAPI spec
+        5. ✅ Test error handling and edge cases
+        6. ✅ Performance validation (response times per SLA)
+        7. ✅ Security validation (auth, input validation)
+        8. ✅ Document bugs with reproduction steps
+        9. ✅ Provide pass/fail metrics
+        10. ✅ Recommend: production sign-off OR fix-required
+        
+        REPORT DELIVERABLES:
+        - Test execution summary (passed/failed/blocked)
+        - Bug reports (with severity, reproduction steps, screenshots)
+        - Performance metrics (if applicable)
+        - Security findings (if applicable)
+        - Production readiness recommendation
+        
+        If bugs found, create separate GitHub issues with [Bug] label.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        **Next Step**: @qa-agent will provide test results in a comment

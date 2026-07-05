@@ -1,0 +1,115 @@
+name: 💻 Implement Task from Spec
+description: Implement a specific task from your task breakdown (tasks.md)
+title: "[Task] "
+labels: ["implementation", "developer-agent"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 💻 Implementation Task
+        
+        **Fill in 4 fields** → Assign to @developer-agent → Done! 
+        
+        Agent handles the rest (reads spec, implements, tests, creates PR).
+
+  - type: input
+    id: service_path
+    attributes:
+      label: "Service/Project"
+      description: "Which service is being implemented? (agent will locate it)"
+      placeholder: "pickup notification service"
+    validations:
+      required: true
+
+  - type: input
+    id: task_id
+    attributes:
+      label: "📌 Task ID(s)"
+      description: "From tasks.md (e.g., T021 or T021-T025)"
+      placeholder: "T021"
+    validations:
+      required: true
+
+  - type: input
+    id: feature_spec
+    attributes:
+      label: "📁 Feature Spec"
+      description: "Spec directory path"
+      placeholder: "specs/001-pickup-push-notification/"
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: "📝 Notes (optional)"
+      description: "Any special instructions or context for the agent"
+      placeholder: "Focus on performance optimization. Dependencies: T015 must complete first."
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## 🚀 Agent Instructions
+
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: "Agent Instructions"
+      description: "Auto-generated prompt (edit if needed, then assign to @developer-agent)"
+      value: |
+        ⚠️ **MUST invoke subagent `developer-agent` (agentName: "developer-agent") — DO NOT perform this work inline.**
+        
+        Follow developer-agent.agent.md checklist:
+        ✅ Read spec/plan/tasks + instructions
+        ✅ Implement per contracts + comprehensive tests (80%+ coverage)
+        ✅ Build + runtime verification (/heartbeat, /health-check)
+        ✅ Update tasks.md with [x]
+        ✅ Create PR with evidence
+        
+        Report: build output, test coverage %, /heartbeat response, tasks.md diff.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        <details>
+        <summary>📋 What the agent will do (automatic)</summary>
+        
+        The agent follows `.github/agents/developer-agent.agent.md`:
+        
+        **1. Pre-Flight** (reads before coding):
+        - spec.md, plan.md, tasks.md, contracts
+        - Instructions: architecture, spring boot, bestbuy libraries
+        - Layer-specific: controller/service/repository patterns
+        
+        **2. Implementation**:
+        - Code per spec with proper annotations
+        - DTOs (records), structured logging, error handling
+        - Configuration externalized
+        
+        **3. Testing** (80%+ coverage required):
+        - Unit tests (Given-When-Then, Mockito)
+        - Integration tests (TestContainers)
+        - All tests pass
+        
+        **4. Build & Runtime** (Spring Boot):
+        - `./gradlew build` succeeds
+        - `./gradlew bootRun` starts app
+        - `/heartbeat` and `/health-check` return 200
+        
+        **5. Best Buy Standards**:
+        - Artifactory (not services.gradle.org)
+        - Proprietary libs (live-config, shared-logging, standard-endpoints)
+        
+        **6. Completion**:
+        - Update tasks.md with [x] and update summary section
+        - Create PR with constitution checklist
+        - Provide evidence (build, tests, runtime)
+        
+        Your **CI/CD checks** will verify everything automatically.
+        
+        </details>

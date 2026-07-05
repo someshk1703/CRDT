@@ -1,0 +1,29 @@
+name: 📋 Charter Brief
+description: Start implementation from a charter brief distributed by enterprise architecture
+title: "[Charter] "
+labels: ["charter", "specification"]
+body:
+  - type: input
+    id: brief_url
+    attributes:
+      label: "Domain Brief URL"
+      description: "Link to your domain brief in value-stream-workspace"
+      placeholder: "https://github.com/bby-corp/value-stream-workspace/blob/main/value-streams/large-product-fulfillment/charters/lpf-carrier-rate-shop/distribution/fulfillment-domain-brief.md"
+    validations:
+      required: true
+
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: "Agent Instructions"
+      value: |
+        🤖 **AGENT: Follow this checklist exactly** 🤖
+
+        Use the `fetch-external-reference` skill to fetch the brief URL provided above.
+
+        Save the output to: `docs/intake/charter-{charter-name}-{domain-name}.md`
+        (derive charter-name and domain-name from the URL path)
+
+        Next: open a **📋 Create Requirements Spec** issue using that path as the intake doc.
+    validations:
+      required: true

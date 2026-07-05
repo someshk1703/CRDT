@@ -1,0 +1,108 @@
+name: 📚 Generate / Update Codebase Documentation
+description: Generate new or update existing codebase docs for a service or component
+title: "[Docs] "
+labels: ["documentation", "doc-agent"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 📚 Codebase Documentation
+        
+        Generate new docs or update existing docs after a feature is added.
+        
+        **Fill in the fields** → Assign to @doc-agent → Get `docs/codebase/<service>/` docs!
+
+  - type: input
+    id: service_path
+    attributes:
+      label: "📁 Service / Component Path"
+      description: "Path to the service or component to document"
+      placeholder: "services/pickup-notification-service/"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: "📐 Documentation Scope"
+      description: "Choose the level of documentation to generate"
+      options:
+        - "1 - Quick Overview — overview, architecture, getting started"
+        - "2 - Developer Onboarding — overview + features, APIs, data models, tests"
+        - "3 - Comprehensive — full coverage incl. operations, integrations, ADRs"
+        - "4 - Focused Deep Dive — specific subsystem or pattern (describe below)"
+        - "5 - Feature Documentation Update — update existing docs for a new feature"
+        - "6 - Generate agent-context.md — create/refresh workspace-root agent context file"
+    validations:
+      required: true
+
+  - type: textarea
+    id: focus_or_feature
+    attributes:
+      label: "🎯 Focus Areas or New Feature (optional)"
+      description: |
+        - Scope 4: Describe the subsystem or pattern to document (e.g. "Kafka error handling patterns")
+        - Scope 5: Describe the new feature and list changed files/classes
+      placeholder: |
+        Scope 4 example:
+          Focus on circuit breaker and retry patterns in the notification flow
+
+        Scope 5 example:
+          New feature: Device Registration (spec 001)
+          Changed: DeviceController, DeviceService, device_registry table, /api/v1/devices endpoint
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## 🚀 Agent Instructions
+
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: "Agent Instructions"
+      description: "Auto-generated prompt for @doc-agent (edit if needed)"
+      value: |
+        ⚠️ **MUST invoke subagent `doc-agent` (agentName: "doc-agent") — DO NOT perform this work inline.**
+
+        Target: {service_path}
+        Scope: {scope}
+        Focus / Feature: {focus_or_feature}
+
+        Steps:
+        ✅ Clarify any missing inputs before starting (scope, focus)
+        ✅ Read source code — only document what is verifiably in the code
+        ✅ Apply confidence markers: [VERIFIED], [INFERRED], [DOCUMENTED], [UNKNOWN]
+        ✅ Trace all critical flows end-to-end with file + line references
+        ✅ Copy-paste code snippets directly (never retype)
+        ✅ Flag gaps: [NO TEST COVERAGE], [RATIONALE UNKNOWN]
+        ✅ Add "Last Updated" footer to every file written
+        ✅ Register docs/codebase/{service}/ in copilot-instructions.md if not already present
+
+        For Scope 5 (Feature Update) also:
+        ✅ Audit existing docs — mark sections [NEEDS UPDATE], [STILL ACCURATE], [OBSOLETE]
+        ✅ Update impacted features/, code-flows/, apis/, data/, integrations/ files
+        ✅ Append changelog footer to every modified file
+
+        For Scope 6 (Generate agent-context.md) also:
+        ✅ Read copilot-instructions.md, specs/contracts/, build files, and docs/architecture/ in parallel
+        ✅ Use src/templates/agent-context-template.md as the output template
+        ✅ Flag unpopulated sections with ⚠️ Review needed markers — do not invent content
+        ✅ Write completed file to agent-context.md at the workspace root
+        ✅ Register agent-context.md reference in copilot-instructions.md
+
+        Output:
+        - For Scopes 1–5: docs/codebase/{service}/
+        - For Scope 6: agent-context.md at workspace root (update docs/codebase/{service}/ if needed)
+        Report: Files created/updated, gaps found, copilot-instructions.md registration status.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **Next Steps**:
+        - After docs are generated, start at `docs/codebase/<service>/overview.md`

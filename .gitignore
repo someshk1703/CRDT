@@ -1,0 +1,49 @@
+# Agentic dev toolkit and spec kit (local tooling, not source code)
+.adt/
+.specify/
+plan/
+
+# Local npm registry override (public registry for this personal project)
+.npmrc
+
+# Environment variables (never commit secrets)
+.env
+.env.local
+.env.*.local
+
+# Node dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+build/
+**/dist/
+**/build/
+
+# Vite
+.vite/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+**/coverage/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Supabase local dev (if used)
+.supabase/

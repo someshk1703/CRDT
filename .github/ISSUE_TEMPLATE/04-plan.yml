@@ -1,0 +1,74 @@
+name: 🏗️ Technical Implementation Plan
+description: Generate architecture, tech stack, data models, and API contracts
+title: "[Plan] "
+labels: ["planning", "architecture"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🏗️ Plan - Technical Design
+        
+        Convert specification into technical implementation plan.
+        
+        **Provide spec path** → Run /speckit.plan → Get full plan!
+
+  - type: input
+    id: spec_path
+    attributes:
+      label: "📁 Spec Directory Path"
+      description: "Path to feature spec directory"
+      placeholder: "specs/001-pickup-push-notification/"
+    validations:
+      required: true
+
+  - type: textarea
+    id: tech_preferences
+    attributes:
+      label: "⚙️ Tech Preferences (optional)"
+      description: "Any specific technology choices or constraints"
+      placeholder: |
+        - Must use Aurora PostgreSQL (not RDS)
+        - Prefer Redis MemoryDB for caching
+        - Use Spring Boot 3.4.12
+        - Kafka for event streaming
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## 🚀 Agent Instructions
+
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: "Agent Instructions"
+      description: "Auto-generated command (edit if needed, then run in Copilot Chat)"
+      value: |
+        ⚠️ **MUST invoke subagent `speckit.plan` (agentName: "speckit.plan") — DO NOT perform this work inline.**
+        
+        Create:
+        ✅ plan.md - Implementation plan + constitution check
+        ✅ research.md - Technology research and rationale
+        ✅ data-model.md - Database schema and relationships
+        ✅ contracts/ - OpenAPI specs, event schemas
+        ✅ diagrams/ - Architecture diagrams (optional)
+        
+        Include:
+        ✅ Technology stack (Java 21, Spring Boot, databases)
+        ✅ Architecture patterns (layers, integration points)
+        ✅ Data models with relationships
+        ✅ API contracts (OpenAPI 3.0)
+        ✅ Event schemas (Kafka topics)
+        ✅ Performance goals
+        ✅ Constitution compliance validation
+        
+        Report: Paths to created files, tech stack summary, constitution check results.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        **Next Step**: Use 📋 Tasks template

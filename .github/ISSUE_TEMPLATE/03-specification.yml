@@ -1,0 +1,63 @@
+name: 📋 Create Requirements Spec
+description: Generate detailed requirements with user stories and acceptance criteria
+title: "[Spec] "
+labels: ["specification", "planning"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 📋 Specification - Requirements Definition
+        
+        Convert intake doc into detailed user stories with acceptance criteria.
+        
+        **Provide intake doc** → Run /speckit.specify → Get spec.md!
+
+  - type: input
+    id: intake_doc
+    attributes:
+      label: "📄 Intake Document Path"
+      description: "Agent will extract feature name and assign next sequential number"
+      placeholder: "docs/intake/pickup-push-notification.md"
+    validations:
+      required: true
+
+  - type: input
+    id: legacy_docs
+    attributes:
+      label: "🔍 Legacy Analysis Path (if migration)"
+      description: "Leave blank if greenfield"
+      placeholder: "docs/legacy-systems/adapt-notifications/"
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## 🚀 Agent Instructions
+
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: "Agent Instructions"
+      description: "Auto-generated command (edit if needed, then run in Copilot Chat)"
+      value: |
+        ⚠️ **MUST invoke subagent `speckit.specify` (agentName: "speckit.specify") — DO NOT perform this work inline.**
+        
+        Create: specs/{feature-number}-{feature-name}/spec.md
+        
+        Include:
+        ✅ Prioritized user stories (P1, P2, P3)
+        ✅ Given-When-Then acceptance criteria
+        ✅ Functional requirements
+        ✅ Non-functional requirements (performance, security)
+        ✅ Clarifications documented
+        
+        Report: Path to spec.md, number of user stories, priority breakdown.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        **Next Step**: Use 🏗️ Technical Implementation Plan template

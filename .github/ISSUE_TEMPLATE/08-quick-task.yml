@@ -1,0 +1,97 @@
+name: ⚡ Quick Work (No Spec)
+description: Adhoc work like upgrades, refactoring, or config changes - bypasses spec workflow
+title: "[Quick] "
+labels: ["adhoc", "developer-agent"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ⚡ Quick Task
+        
+        For work that doesn't need full spec workflow:
+        - Dependency upgrades, refactoring, config changes, docs, etc.
+        
+        **Fill 4 fields below** → Agent prompt auto-generates in issue body → Assign to agent!
+
+  - type: input
+    id: service_path
+    attributes:
+      label: "Service/Project"
+      description: "Which service or project? (agent will find it in monorepo)"
+      placeholder: "pickup notification service"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "What needs to be done?"
+      placeholder: |
+        Upgrade Spring Boot 3.2.0 → 3.4.12
+        
+        Why: Security patches and performance improvements
+        Scope: Update dependencies, test compatibility
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reason
+    attributes:
+      label: "Why skip spec workflow?"
+      options:
+        - "Dependency upgrade"
+        - "Refactoring existing code"
+        - "Configuration change"
+        - "Documentation update"
+        - "Technical debt cleanup"
+        - "Test improvements"
+        - "Other (minimal scope)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: "Impact"
+      options:
+        - "🟢 Low - Isolated change"
+        - "🟡 Medium - Multiple files"
+        - "🟠 High - Cross-cutting concern"
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## 🚀 Agent Instructions
+
+  - type: textarea
+    id: agent_instructions
+    attributes:
+      label: "Agent Instructions"
+      description: "Auto-generated prompt for @developer-agent (edit if needed)"
+      value: |
+        ⚠️ **MUST invoke subagent `developer-agent` (agentName: "developer-agent") — DO NOT perform this work inline.**
+        
+        REQUIRED CHECKLIST:
+        ✅ Implement change
+        ✅ Tests for new code (80%+ coverage)
+        ✅ Existing tests pass
+        ✅ Build succeeds + app starts
+        ✅ Manual testing completed
+        ✅ Create PR with rationale in description
+        
+        Commit message format:
+        "type: description
+        
+        Quick task (no spec needed) - rationale here."
+        
+        Report: build output, test results, /heartbeat response.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        **Note**: Testing and quality standards still apply (80% coverage, no prohibited patterns).

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📚 Documentation
+    url: https://github.com/bby-corp/modern-monorepo/tree/main/docs
+    about: View workflow guides and architecture documentation
+  - name: 🤖 Agentic Development Guide
+    url: https://github.com/bby-corp/modern-monorepo/blob/main/docs/agentic-development/workflow-guide.md
+    about: Learn about the spec kit workflow and agent usage
