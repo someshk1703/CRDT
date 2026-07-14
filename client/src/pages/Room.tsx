@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { basicSetup, EditorView } from 'codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useCRDT } from '../hooks/useCRDT';
 
 /**
  * Reads the WS server URL from the Vite env variable, falling back to localhost
@@ -20,65 +21,48 @@ const STATUS_COLORS: Record<string, string> = {
 export function Room() {
   const { roomId } = useParams<{ roomId: string }>();
   const editorContainerRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef<EditorView | null>(null);
+  const editorMountedRef = useRef(false);
 
-  /** Week 1 broadcast log — replaced by actual document sync in Week 2. */
-  const [broadcastLog, setBroadcastLog] = useState<string[]>([]);
+  // Stable userId for this session (one UUID per tab)
+  const userIdRef = useRef(crypto.randomUUID());
 
   const wsUrl = roomId ? `${WS_BASE}/room/${roomId}` : null;
 
-  const onMessage = useCallback((data: unknown) => {
-    const line = typeof data === 'object'
-      ? JSON.stringify(data)
-      : String(data);
-    setBroadcastLog((prev) => [...prev.slice(-99), line]);
-  }, []);
+  const { extensions: crdtExtensions, applyRemoteOp, setView, sendRef } = useCRDT(
+    userIdRef.current,
+    roomId ?? '',
+  );
 
-  const { send, status } = useWebSocket(wsUrl, { onMessage });
+  const { send, status } = useWebSocket(wsUrl, { onMessage: applyRemoteOp });
+
+  // Keep useCRDT's sendRef in sync with the real send from useWebSocket
+  sendRef.current = send;
 
   // ── Mount CodeMirror ────────────────────────────────────────────────────────
-  // Important: send is a stable ref from useCallback, safe to include in deps.
 
   useEffect(() => {
-    if (!editorContainerRef.current || viewRef.current) return;
+    if (!editorContainerRef.current || editorMountedRef.current) return;
+    editorMountedRef.current = true;
 
     const view = new EditorView({
       extensions: [
         basicSetup,
         javascript(),
-        /**
-         * Week 1: on every local document change, broadcast the raw text delta
-         * over WebSocket so the other tab can see it in the broadcast log.
-         *
-         * Week 2 replaces this listener with a proper CRDT op generator that
-         * intercepts Transactions and produces CRDTChar inserts/deletes.
-         */
-        EditorView.updateListener.of((update) => {
-          if (!update.docChanged) return;
-          update.transactions.forEach((tr) => {
-            tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
-              send({
-                type: 'op',
-                payload: {
-                  from: fromA,
-                  to: toA,
-                  insert: inserted.toString(),
-                },
-              });
-            });
-          });
-        }),
+        // Week 2: CRDT extensions handle local→op broadcast and remote op display.
+        ...crdtExtensions,
       ],
       parent: editorContainerRef.current,
     });
 
-    viewRef.current = view;
+    setView(view);
 
     return () => {
       view.destroy();
-      viewRef.current = null;
+      editorMountedRef.current = false;
     };
-  }, [send]);
+    // crdtExtensions and setView are stable refs — safe to omit from deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Guard: no roomId ────────────────────────────────────────────────────────
 
@@ -152,32 +136,6 @@ export function Room() {
         ref={editorContainerRef}
         style={{ flex: 1, overflow: 'auto', background: '#1e1e2e' }}
       />
-
-      {/* ── Week 1 broadcast log ── */}
-      <div style={{
-        height: '180px',
-        overflowY: 'auto',
-        background: '#11111b',
-        borderTop: '1px solid #313244',
-        padding: '0.5rem 1rem',
-        fontFamily: 'monospace',
-        fontSize: '0.72rem',
-        color: '#a6adc8',
-        flexShrink: 0,
-      }}>
-        <div style={{ color: '#45475a', marginBottom: '4px', userSelect: 'none' }}>
-          ▸ Broadcast log (Week 1 debug — removed in Week 2):
-        </div>
-        {broadcastLog.length === 0 ? (
-          <div style={{ color: '#313244' }}>
-            No broadcasts yet — open another tab at this URL and type something.
-          </div>
-        ) : (
-          broadcastLog.map((line, i) => (
-            <div key={i} style={{ lineHeight: '1.6' }}>{line}</div>
-          ))
-        )}
-      </div>
     </div>
   );
 }

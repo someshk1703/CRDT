@@ -136,7 +136,25 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
-    console.log(`[room:${roomId}] op from ${client.id}:`, parsed);
+    const msg = parsed as Record<string, unknown>;
+
+    // Route by message type — add Week 2 CRDT validation here
+    if (msg['type'] === 'crdt-delete') {
+      if (typeof msg['charId'] !== 'string' || msg['charId'].length === 0) {
+        console.warn(`[server] ${client.id} crdt-delete missing charId — discarded`);
+        return;
+      }
+    }
+
+    if (msg['type'] === 'crdt-insert') {
+      const char = msg['char'] as Record<string, unknown> | undefined;
+      if (!char || typeof char['id'] !== 'string' || typeof char['value'] !== 'string') {
+        console.warn(`[server] ${client.id} crdt-insert malformed char — discarded`);
+        return;
+      }
+    }
+
+    console.log(`[room:${roomId}] ${msg['type']} from ${client.id}`);
     roomManager.broadcast(roomId, parsed as object, client.id);
   });
 

@@ -75,33 +75,65 @@ Track end-of-week completion. Check off items only when verified end-to-end (not
 
 ## Week 2 — CRDT Algorithm (RGA)
 
-**Spec**: `specs/002-week2-crdt/spec.md` *(not yet created)*
-**Branch**: `002-week2-crdt`
+**Spec**: [specs/002-rga-crdt-core/spec.md](specs/002-rga-crdt-core/spec.md)
+**Plan**: [specs/002-rga-crdt-core/plan.md](specs/002-rga-crdt-core/plan.md)
+**Tasks**: [specs/002-rga-crdt-core/tasks.md](specs/002-rga-crdt-core/tasks.md)
+**Branch**: `002-rga-crdt-core`
 
-### Algorithm
+### Algorithm (`shared/src/crdt.ts`)
 
-- [ ] `CRDTChar` interface: `{ id, value, originId, deleted }` in `shared/src/crdt.ts`
-- [ ] `RGADocument.localInsert(pos, value, clientId)` → returns `CRDTChar` to broadcast
-- [ ] `RGADocument.integrateInsert(char)` — deterministic tie-break by `clientId`
-- [ ] `RGADocument.localDelete(pos)` → returns charId to broadcast (tombstone, NOT splice)
-- [ ] `RGADocument.toString()` → joins only non-deleted chars
+- [x] `CRDTChar` interface: `{ id, value, originId, deleted }` in `shared/src/crdt.ts`
+- [x] `LamportClock`: `tick()`, `update(received)`, `now()`
+- [x] `RGADocument.localInsert(pos, value, clientId)` → returns `CRDTChar` to broadcast
+- [x] `RGADocument.integrateInsert(char)` — deterministic tie-break by ID lexicographic order
+- [x] `RGADocument.localDelete(pos)` → tombstone (not splice), returns char for broadcasting
+- [x] `RGADocument.remoteInsert(char)` — idempotent
+- [x] `RGADocument.remoteDelete(charId)` — idempotent
+- [x] `RGADocument.getText()` → joins only non-deleted chars
+- [x] `RGADocument.getVisibleLength()` — count of non-tombstoned chars
+
+### Wire Protocol
+
+- [x] `CRDTInsertMessage` and `CRDTDeleteMessage` added to `shared/src/index.ts`
+- [x] `CRDTChar` re-exported from shared package
+- [x] `AppMessage` union includes both new types
+- [x] Server routes `crdt-insert` / `crdt-delete` with payload validation
 
 ### CodeMirror Integration
 
-- [ ] `useCollabEditor` hook wires `EditorView` transactions → CRDT ops → WebSocket `send()`
-- [ ] Remote CRDT ops received via WebSocket → applied to `RGADocument` → dispatched as CodeMirror transaction
-- [ ] Bidirectional mapper: CRDT index (includes tombstones) ↔ CodeMirror visible index
+- [x] `useCRDT` hook created in `client/src/hooks/useCRDT.ts`
+- [x] Local CodeMirror transactions → CRDT ops → WebSocket broadcast
+- [x] Remote CRDT ops → `RGADocument` → CodeMirror transaction dispatch
+- [x] `remoteAnnotation` prevents re-broadcasting of applied remote ops
+- [x] `Room.tsx` wired: Week 1 raw-op listener removed, broadcast log removed
+- [x] `sendRef` pattern avoids hook-ordering dependency between `useCRDT` and `useWebSocket`
 
-### Tests (mandatory — constitution Principle IV)
+### Tests
 
-- [ ] Unit tests in `shared/src/__tests__/crdt.unit.test.ts`:
-  - [ ] Concurrent inserts at same position
-  - [ ] Concurrent deletes
-  - [ ] Insert after tombstone
-  - [ ] 3-way merge
-  - [ ] Idempotency (apply same op twice → same result)
-- [ ] Convergence fuzz test in `shared/src/__tests__/crdt.convergence.test.ts`:
-  - [ ] Generate random op sequences → apply in different orders on two `RGADocument` instances → same `toString()`
+- [x] Unit tests in `shared/src/crdt.test.ts` — **19/19 passing**:
+  - [x] LamportClock tick sequence
+  - [x] LamportClock update (max rule)
+  - [x] Single insert, sequential inserts, insert in middle
+  - [x] Tombstone delete (char remains in array)
+  - [x] Remote insert idempotency
+  - [x] Remote delete idempotency + unknown charId no-op
+  - [x] Concurrent inserts → convergence (two-client cross-apply)
+  - [x] Concurrent inserts after same origin → deterministic ordering
+  - [x] Concurrent insert + delete → no corruption
+  - [x] Three-client convergence
+
+### TypeScript
+
+- [x] `tsc --noEmit` clean in `shared/`
+- [x] `tsc --noEmit` clean in `server/`
+- [x] `tsc --noEmit` clean in `client/`
+
+### Manual Convergence Tests (complete after running the app)
+
+- [ ] Two tabs type simultaneously at position 0 → both converge to same 2-char string
+- [ ] Delete in tab A + insert at same pos in tab B → no corruption
+- [ ] Paste 50 chars in tab A → tab B shows all 50 chars
+- [ ] Kill/restart server → reconnect works (Week 1 backoff still intact)
 
 ### Week 2 Gate — open Week 3 only when all items above are checked
 

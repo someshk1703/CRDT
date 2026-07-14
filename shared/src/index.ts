@@ -1,8 +1,12 @@
 // Shared message types for client ↔ server communication.
-// Week 1: raw op payloads. Week 2 will replace OpPayload with CRDTChar.
+// Week 1: raw op payloads. Week 2: CRDT insert/delete messages added.
+
+export type { CRDTChar } from './crdt.js';
 
 export type MessageType =
   | 'op'
+  | 'crdt-insert'
+  | 'crdt-delete'
   | 'presence'
   | 'user-joined'
   | 'user-left'
@@ -40,8 +44,20 @@ export interface UserLeftMessage extends BaseMessage {
   type: 'user-left';
 }
 
+export interface CRDTInsertMessage extends BaseMessage {
+  type: 'crdt-insert';
+  char: import('./crdt.js').CRDTChar;
+}
+
+export interface CRDTDeleteMessage extends BaseMessage {
+  type: 'crdt-delete';
+  charId: string;
+}
+
 export type AppMessage =
   | OpMessage
+  | CRDTInsertMessage
+  | CRDTDeleteMessage
   | PresenceMessage
   | UserJoinedMessage
   | UserLeftMessage;
