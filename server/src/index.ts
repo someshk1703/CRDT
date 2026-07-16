@@ -91,6 +91,7 @@ wss.on('connection', (ws, req) => {
     roomId,
     // Week 5: userId will come from the validated JWT. For now, one UUID per connection.
     userId: randomUUID(),
+    presenceUserId: undefined,
     color: roomManager.assignColor(),
   };
 
@@ -100,6 +101,11 @@ wss.on('connection', (ws, req) => {
   alive.set(ws, true);
   const hbTimer = startHeartbeat(ws, client.id);
   ws.on('pong', () => alive.set(ws, true));
+
+  // Tell the connecting client their server-assigned colour (Week 3: presence)
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'welcome', userId: client.userId, roomId, color: client.color }));
+  }
 
   // Tell existing peers about the new arrival
   roomManager.broadcast(
@@ -138,7 +144,12 @@ wss.on('connection', (ws, req) => {
 
     const msg = parsed as Record<string, unknown>;
 
-    // Route by message type — add Week 2 CRDT validation here
+    // Track the client's self-reported userId for use in user-left (Week 3)
+    if (typeof msg['userId'] === 'string' && msg['userId'].length > 0) {
+      client.presenceUserId = msg['userId'] as string;
+    }
+
+    // Route by message type
     if (msg['type'] === 'crdt-delete') {
       if (typeof msg['charId'] !== 'string' || msg['charId'].length === 0) {
         console.warn(`[server] ${client.id} crdt-delete missing charId — discarded`);
@@ -154,7 +165,24 @@ wss.on('connection', (ws, req) => {
       }
     }
 
-    console.log(`[room:${roomId}] ${msg['type']} from ${client.id}`);
+    if (msg['type'] === 'presence') {
+      const cursor = msg['cursor'] as Record<string, unknown> | undefined;
+      if (
+        !cursor ||
+        typeof cursor['from'] !== 'number' ||
+        typeof cursor['to'] !== 'number'
+      ) {
+        console.warn(`[server] ${client.id} presence missing cursor — discarded`);
+        return;
+      }
+      const name = msg['name'];
+      if (typeof name !== 'string' || name.length === 0 || name.length > 64) {
+        console.warn(`[server] ${client.id} presence invalid name — discarded`);
+        return;
+      }
+    }
+
+    console.log(`[room:${roomId}] ${msg['type'] as string} from ${client.id}`);
     roomManager.broadcast(roomId, parsed as object, client.id);
   });
 
@@ -164,7 +192,9 @@ wss.on('connection', (ws, req) => {
     clearInterval(hbTimer);
     rateLimits.delete(client.id);
     roomManager.leave(client);
-    roomManager.broadcast(roomId, { type: 'user-left', userId: client.userId, roomId });
+    // Use the client's self-reported userId so peers can match it to presence messages
+    const leftUserId = client.presenceUserId ?? client.userId;
+    roomManager.broadcast(roomId, { type: 'user-left', userId: leftUserId, roomId });
   });
 
   ws.on('error', (err) => {

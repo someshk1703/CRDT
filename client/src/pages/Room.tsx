@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { basicSetup, EditorView } from 'codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useCRDT } from '../hooks/useCRDT';
+import { usePresence } from '../hooks/usePresence';
 
 /**
  * Reads the WS server URL from the Vite env variable, falling back to localhost
@@ -18,6 +19,13 @@ const STATUS_COLORS: Record<string, string> = {
   error: '#f38ba8',
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  open: 'Connected',
+  connecting: 'Connecting',
+  closed: 'Disconnected',
+  error: 'Error',
+};
+
 export function Room() {
   const { roomId } = useParams<{ roomId: string }>();
   const editorContainerRef = useRef<HTMLDivElement>(null);
@@ -28,15 +36,67 @@ export function Room() {
 
   const wsUrl = roomId ? `${WS_BASE}/room/${roomId}` : null;
 
-  const { extensions: crdtExtensions, applyRemoteOp, setView, sendRef } = useCRDT(
-    userIdRef.current,
-    roomId ?? '',
+  // ── useCRDT ─────────────────────────────────────────────────────────────────
+
+  const {
+    extensions: crdtExtensions,
+    applyRemoteOp,
+    setView: setCrdtView,
+    sendRef,
+  } = useCRDT(userIdRef.current, roomId ?? '', {
+    // Wire cursor reconciliation: when a remote CRDT op shifts the document,
+    // adjust all tracked remote cursor positions accordingly.
+    onRemoteChange: (from, removed, inserted) => {
+      reconcileCursors(from, removed, inserted);
+    },
+  });
+
+  // ── usePresence ─────────────────────────────────────────────────────────────
+
+  // send is provided by useWebSocket; forward via ref to avoid circular hook deps
+  const sendFnRef = useRef<(msg: object) => void>(() => { /* noop until WS connects */ });
+
+  const {
+    handleMessage: handlePresenceMessage,
+    sendPresence,
+    setView: setPresenceView,
+    extensions: presenceExtensions,
+    reconcileCursors,
+  } = usePresence({
+    userId: userIdRef.current,
+    roomId: roomId ?? '',
+    send: (msg) => sendFnRef.current(msg),
+  });
+
+  // ── Unified message handler ──────────────────────────────────────────────────
+
+  const handleMessage = useCallback(
+    (msg: Parameters<typeof applyRemoteOp>[0]) => {
+      applyRemoteOp(msg);        // handles crdt-insert, crdt-delete
+      handlePresenceMessage(msg); // handles welcome, presence, user-left
+    },
+    [applyRemoteOp, handlePresenceMessage],
   );
 
-  const { send, status } = useWebSocket(wsUrl, { onMessage: applyRemoteOp });
+  const { send, status } = useWebSocket(wsUrl, { onMessage: handleMessage });
 
-  // Keep useCRDT's sendRef in sync with the real send from useWebSocket
+  // Keep useCRDT's sendRef and the presence sendFnRef in sync each render
   sendRef.current = send;
+  sendFnRef.current = send;
+
+  // ── Cursor extension: fire sendPresence on selection changes ─────────────────
+
+  const sendPresenceRef = useRef(sendPresence);
+  sendPresenceRef.current = sendPresence;
+
+  const selectionListenerExtension = useRef(
+    EditorView.updateListener.of((update) => {
+      if (update.selectionSet) {
+        const { from, to } = update.state.selection.main;
+        sendPresenceRef.current({ from, to });
+      }
+    }),
+  ).current;
 
   // ── Mount CodeMirror ────────────────────────────────────────────────────────
 
@@ -48,19 +108,23 @@ export function Room() {
       extensions: [
         basicSetup,
         javascript(),
-        // Week 2: CRDT extensions handle local→op broadcast and remote op display.
+        // Week 2: CRDT sync
         ...crdtExtensions,
+        // Week 3: live cursors & awareness
+        presenceExtensions,
+        selectionListenerExtension,
       ],
       parent: editorContainerRef.current,
     });
 
-    setView(view);
+    setCrdtView(view);
+    setPresenceView(view);
 
     return () => {
       view.destroy();
       editorMountedRef.current = false;
     };
-    // crdtExtensions and setView are stable refs — safe to omit from deps
+    // Stable refs — safe to omit from deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -112,10 +176,22 @@ export function Room() {
           Copy link
         </button>
 
+        {/* User identity pill */}
+        <span style={{
+          fontSize: '0.72rem',
+          padding: '2px 8px',
+          borderRadius: '999px',
+          background: '#313244',
+          color: '#cdd6f4',
+          fontFamily: 'monospace',
+        }}>
+          User-{userIdRef.current.slice(0, 4).toUpperCase()}
+        </span>
+
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           {status === 'error' && (
             <span style={{ fontSize: '0.72rem', color: '#f38ba8' }}>
-              having trouble connecting…
+              Having trouble connecting…
             </span>
           )}
           <span style={{
@@ -126,7 +202,7 @@ export function Room() {
             color: '#1e1e2e',
             fontWeight: 600,
           }}>
-            {status}
+            {STATUS_LABELS[status] ?? status}
           </span>
         </span>
       </div>
@@ -139,3 +215,4 @@ export function Room() {
     </div>
   );
 }
+

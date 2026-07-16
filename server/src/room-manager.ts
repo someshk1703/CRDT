@@ -22,6 +22,13 @@ export interface Client {
    * Do NOT assume this value is stable before Week 5.
    */
   userId: string;
+  /**
+   * The userId the client sends in its own messages (e.g. presence messages).
+   * Updated on first received message. Used for user-left cleanup so that
+   * other clients can correctly remove the cursor by the same userId they saw
+   * in presence messages.
+   */
+  presenceUserId: string | undefined;
   color: string;
 }
 

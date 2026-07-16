@@ -1,9 +1,31 @@
 import { useCallback, useRef } from 'react';
 import type React from 'react';
 import { EditorView } from 'codemirror';
-import type { Extension } from '@codemirror/state';
+import { Annotation, type Extension } from '@codemirror/state';
 import { RGADocument } from '@crdt/shared/crdt';
 import type { AppMessage, CRDTInsertMessage, CRDTDeleteMessage } from '@crdt/shared';
+
+// ── Annotation ────────────────────────────────────────────────────────────────
+
+/**
+ * Annotation used to mark CodeMirror transactions dispatched by the CRDT hook.
+ * The local change listener checks for this to avoid re-broadcasting remote ops.
+ */
+export const remoteAnnotation = Annotation.define<boolean>();
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface UseCRDTOptions {
+  /**
+   * Called after each remote op is applied to the document with the diff info.
+   * Used by Week 3 presence to reconcile remote cursor positions.
+   *
+   * @param from     Start offset of the changed region
+   * @param removed  Number of characters removed
+   * @param inserted Number of characters inserted
+   */
+  onRemoteChange?: (from: number, removed: number, inserted: number) => void;
+}
 
 interface UseCRDTReturn {
   /** CodeMirror extensions to include when mounting the EditorView. */
@@ -23,32 +45,32 @@ interface UseCRDTReturn {
 }
 
 /**
- * Bridges RGADocument ↔ CodeMirror ↔ WebSocket for Week 2.
+ * Bridges RGADocument ↔ CodeMirror ↔ WebSocket for Week 2+.
  *
  * - Local edits: CodeMirror Transaction → CRDT op → broadcast
  * - Remote edits: received CRDT op → RGADocument → CodeMirror Transaction
  *
- * The hook owns:
- * - One RGADocument (stable ref — never triggers re-renders)
- * - One EditorView ref (set externally after mount)
- *
- * `sendRef` is exposed so that Room.tsx can update it after useWebSocket
- * provides the real send function, avoiding hook ordering issues.
+ * Week 3 addition: `options.onRemoteChange` fires after every remote op so
+ * that presence cursors can be reconciled.
  */
 export function useCRDT(
   userId: string,
   roomId: string,
+  options?: UseCRDTOptions,
 ): UseCRDTReturn {
   const docRef = useRef<RGADocument>(new RGADocument(userId));
   const viewRef = useRef<EditorView | null>(null);
 
-  // Exposed so Room.tsx can assign the real send after useWebSocket initialises
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   const sendRef = useRef<(msg: object) => void>(() => {});
   const userIdRef = useRef(userId);
   userIdRef.current = userId;
   const roomIdRef = useRef(roomId);
   roomIdRef.current = roomId;
+
+  // Keep onRemoteChange stable via ref to avoid recreating applyRemoteOp
+  const onRemoteChangeRef = useRef(options?.onRemoteChange);
+  onRemoteChangeRef.current = options?.onRemoteChange;
 
   // ── Local change listener ─────────────────────────────────────────────────
 
@@ -61,8 +83,6 @@ export function useCRDT(
     const roomId = roomIdRef.current;
 
     update.transactions.forEach((tr) => {
-      // We only care about user-initiated changes, not remote-applied ones.
-      // Remote ops are dispatched with the `remote` annotation to skip this.
       if (tr.annotation(remoteAnnotation)) return;
 
       tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
@@ -70,29 +90,18 @@ export function useCRDT(
         for (let i = toA - 1; i >= fromA; i--) {
           try {
             const deleted = doc.localDelete(i);
-            send({
-              type: 'crdt-delete' as const,
-              userId,
-              roomId,
-              charId: deleted.id,
-            });
+            send({ type: 'crdt-delete' as const, userId, roomId, charId: deleted.id });
           } catch {
-            // Defensive: position out of range (can happen during complex transactions)
             console.warn('[useCRDT] localDelete out of range at', i);
           }
         }
 
         // 2. Process insertions
         const insertedStr = inserted.toString();
-        let insertPos = fromA; // position in visible text after deletions
+        let insertPos = fromA;
         for (const char of insertedStr) {
           const crdt = doc.localInsert(insertPos, char, userId);
-          send({
-            type: 'crdt-insert' as const,
-            userId,
-            roomId,
-            char: crdt,
-          });
+          send({ type: 'crdt-insert' as const, userId, roomId, char: crdt });
           insertPos++;
         }
       });
@@ -114,15 +123,22 @@ export function useCRDT(
         const prevText = doc.getText();
         doc.remoteInsert(insertMsg.char);
         const newText = doc.getText();
-        applyTextDiff(view, prevText, newText);
+        const diff = applyTextDiff(view, prevText, newText);
+        if (diff) {
+          onRemoteChangeRef.current?.(diff.from, diff.removed, diff.inserted);
+        }
       } else if (type === 'crdt-delete') {
         const deleteMsg = msg as CRDTDeleteMessage;
         const prevText = doc.getText();
         doc.remoteDelete(deleteMsg.charId);
         const newText = doc.getText();
-        applyTextDiff(view, prevText, newText);
+        const diff = applyTextDiff(view, prevText, newText);
+        if (diff) {
+          onRemoteChangeRef.current?.(diff.from, diff.removed, diff.inserted);
+        }
       }
-      // Other message types (presence, user-joined, etc.) are ignored here
+      // Other message types (presence, welcome, user-joined/left) are handled
+      // by usePresence — ignored here.
     },
     [],
   );
@@ -136,23 +152,24 @@ export function useCRDT(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-import { Annotation } from '@codemirror/state';
+interface DiffResult {
+  from: number;
+  removed: number;
+  inserted: number;
+}
 
 /**
- * Annotation used to mark CodeMirror transactions dispatched by the CRDT hook.
- * The local change listener checks for this to avoid re-broadcasting remote ops.
- */
-export const remoteAnnotation = Annotation.define<boolean>();
-
-/**
- * Compute a minimal diff between prevText and newText, then dispatch a
- * CodeMirror transaction to update the editor content.
+ * Compute a minimal diff between prevText and newText, dispatch a CodeMirror
+ * transaction to apply it, and return the diff info for cursor reconciliation.
  *
- * Strategy: find the common prefix length and common suffix length, then
- * replace only the changed middle section.
+ * Returns null if the texts are identical (no-op).
  */
-function applyTextDiff(view: EditorView, prevText: string, newText: string): void {
-  if (prevText === newText) return;
+function applyTextDiff(
+  view: EditorView,
+  prevText: string,
+  newText: string,
+): DiffResult | null {
+  if (prevText === newText) return null;
 
   // Find common prefix
   let from = 0;
@@ -160,7 +177,7 @@ function applyTextDiff(view: EditorView, prevText: string, newText: string): voi
     from++;
   }
 
-  // Find common suffix (working backwards from end)
+  // Find common suffix
   let prevEnd = prevText.length;
   let newEnd = newText.length;
   while (prevEnd > from && newEnd > from && prevText[prevEnd - 1] === newText[newEnd - 1]) {
@@ -169,11 +186,14 @@ function applyTextDiff(view: EditorView, prevText: string, newText: string): voi
   }
 
   view.dispatch({
-    changes: {
-      from,
-      to: prevEnd,
-      insert: newText.slice(from, newEnd),
-    },
+    changes: { from, to: prevEnd, insert: newText.slice(from, newEnd) },
     annotations: remoteAnnotation.of(true),
   });
+
+  return {
+    from,
+    removed: prevEnd - from,
+    inserted: newEnd - from,
+  };
 }
+
