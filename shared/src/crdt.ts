@@ -86,6 +86,30 @@ export class RGADocument {
     return this.chars.filter((c) => !c.deleted).length;
   }
 
+  /**
+   * Return the full internal chars array including tombstones.
+   * Used for snapshot serialization.
+   */
+  getChars(): CRDTChar[] {
+    return this.chars;
+  }
+
+  /**
+   * Replace the internal chars array with the provided deserialized array.
+   * Used to restore full CRDT state from a snapshot without replaying every op.
+   * Also advances the Lamport clock past the maximum clock seen in the chars.
+   */
+  loadFromChars(chars: CRDTChar[]): void {
+    this.chars.length = 0;
+    for (const c of chars) {
+      this.chars.push({ ...c });
+    }
+    // Advance clock so future local inserts don't collide
+    for (const c of chars) {
+      this.clock.update(lamportFromId(c.id));
+    }
+  }
+
   // ── Integration ───────────────────────────────────────────────────────────
 
   /**

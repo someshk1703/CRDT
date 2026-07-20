@@ -9,6 +9,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.7",
     "ws": "^8.17.0"
   },
   "devDependencies": {

@@ -1,8 +1,20 @@
 import http from 'http';
 import { randomUUID } from 'crypto';
 import { WebSocket, WebSocketServer } from 'ws';
+import { RGADocument } from '@crdt/shared/crdt';
 import { RoomManager, type Client } from './room-manager.js';
 import type { AppMessage } from '@crdt/shared';
+import { persistOp, loadOpsForRoom, maybeSaveSnapshot } from './db/operations.js';
+
+// ─── Startup env validation (T030) ────────────────────────────────────────────
+
+const REQUIRED_ENV = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] as const;
+for (const key of REQUIRED_ENV) {
+  if (!process.env[key]) {
+    console.error(`[server] Missing required env var: ${key}`);
+    process.exit(1);
+  }
+}
 
 const PORT = parseInt(process.env['PORT'] ?? '3001', 10);
 
@@ -114,6 +126,56 @@ wss.on('connection', (ws, req) => {
     client.id,
   );
 
+  // ── Catch-up: send full document history to the joining client (T018, T019) ─
+
+  loadOpsForRoom(roomId)
+    .then(({ snapshot, ops }) => {
+      // Seed op count from DB so snapshot triggers stay accurate
+      const totalOps = (snapshot ? 0 : 0) + ops.length +
+        (snapshot ? ops.length : 0); // seed with ops-since-snapshot count is imprecise;
+      // use full op count if no snapshot, otherwise (snapshot.op_count already in db)
+      roomManager.seedOpCount(roomId, snapshot ? ops.length : ops.length);
+
+      // Initialize server-side RGADocument if not already present (T019)
+      if (!roomManager.documents.has(roomId)) {
+        const serverDoc = new RGADocument('server');
+        if (snapshot) {
+          serverDoc.loadFromChars(snapshot.chars);
+        }
+        for (const op of ops) {
+          if (op.op_type === 'insert') {
+            serverDoc.remoteInsert(op.payload as import('@crdt/shared/crdt').CRDTChar);
+          } else {
+            serverDoc.remoteDelete((op.payload as { charId: string }).charId);
+          }
+        }
+        roomManager.documents.set(roomId, serverDoc);
+      }
+
+      // Send catch-up to joining client
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'catchup',
+          roomId,
+          userId: client.userId,
+          snapshot: snapshot ? { chars: snapshot.chars, lastClock: snapshot.lastClock } : null,
+          ops,
+        }));
+        console.log(`[room:${roomId}] catch-up sent — ${ops.length} ops, snapshot=${snapshot !== null}`);
+      }
+
+      // Opt-in Realtime broadcast (US4 — T029)
+      if (process.env['ENABLE_REALTIME_BROADCAST'] === 'true') {
+        const room = roomManager.documents.get(roomId);
+        if (room) {
+          roomManager.subscribeRoom(roomId, (op) => roomManager.broadcast(roomId, op));
+        }
+      }
+    })
+    .catch((err: unknown) => {
+      console.error(`[room:${roomId}] catch-up load failed:`, (err as Error).message);
+    });
+
   // ── Incoming messages ──────────────────────────────────────────────────────
 
   ws.on('message', (data, isBinary) => {
@@ -183,6 +245,36 @@ wss.on('connection', (ws, req) => {
     }
 
     console.log(`[room:${roomId}] ${msg['type'] as string} from ${client.id}`);
+
+    // ── Persist CRDT ops before broadcast (T014, T015, T016) ─────────────────
+    if (msg['type'] === 'crdt-insert' || msg['type'] === 'crdt-delete') {
+      persistOp(roomId, client.id, msg)
+        .then(() => {
+          // Apply op to server-side doc (T015)
+          const serverDoc = roomManager.documents.get(roomId);
+          if (serverDoc) {
+            if (msg['type'] === 'crdt-insert') {
+              serverDoc.remoteInsert(msg['char'] as import('@crdt/shared/crdt').CRDTChar);
+            } else {
+              serverDoc.remoteDelete(msg['charId'] as string);
+            }
+          }
+
+          // Trigger snapshot if threshold reached (T016)
+          const count = roomManager.incrementOpCount(roomId);
+          if (serverDoc) {
+            void maybeSaveSnapshot(roomId, serverDoc, count);
+          }
+
+          // Broadcast to peers
+          roomManager.broadcast(roomId, parsed as object, client.id);
+        })
+        .catch((err: unknown) => {
+          console.error(`[room:${roomId}] persistOp failed — not broadcasting:`, (err as Error).message);
+        });
+      return;
+    }
+
     roomManager.broadcast(roomId, parsed as object, client.id);
   });
 
@@ -195,6 +287,10 @@ wss.on('connection', (ws, req) => {
     // Use the client's self-reported userId so peers can match it to presence messages
     const leftUserId = client.presenceUserId ?? client.userId;
     roomManager.broadcast(roomId, { type: 'user-left', userId: leftUserId, roomId });
+    // Unsubscribe Realtime if room became empty
+    if (process.env['ENABLE_REALTIME_BROADCAST'] === 'true') {
+      roomManager.unsubscribeRoom(roomId);
+    }
   });
 
   ws.on('error', (err) => {

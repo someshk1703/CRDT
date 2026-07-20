@@ -3,7 +3,7 @@ import type React from 'react';
 import { EditorView } from 'codemirror';
 import { Annotation, type Extension } from '@codemirror/state';
 import { RGADocument } from '@crdt/shared/crdt';
-import type { AppMessage, CRDTInsertMessage, CRDTDeleteMessage } from '@crdt/shared';
+import type { AppMessage, CRDTInsertMessage, CRDTDeleteMessage, CatchupMessage } from '@crdt/shared';
 
 // ── Annotation ────────────────────────────────────────────────────────────────
 
@@ -136,6 +136,20 @@ export function useCRDT(
         if (diff) {
           onRemoteChangeRef.current?.(diff.from, diff.removed, diff.inserted);
         }
+      } else if (type === 'catchup') {
+        const catchupMsg = msg as CatchupMessage;
+        if (catchupMsg.snapshot) {
+          doc.loadFromChars(catchupMsg.snapshot.chars);
+        }
+        for (const op of catchupMsg.ops) {
+          if (op.op_type === 'insert') {
+            doc.remoteInsert(op.payload as import('@crdt/shared/crdt').CRDTChar);
+          } else {
+            doc.remoteDelete((op.payload as { charId: string }).charId);
+          }
+        }
+        const newText = doc.getText();
+        applyTextDiff(view, view.state.doc.toString(), newText);
       }
       // Other message types (presence, welcome, user-joined/left) are handled
       // by usePresence — ignored here.

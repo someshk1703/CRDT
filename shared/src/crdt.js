@@ -60,6 +60,23 @@ export class RGADocument {
     getVisibleLength() {
         return this.chars.filter((c) => !c.deleted).length;
     }
+    /** Return the full internal chars array including tombstones. */
+    getChars() {
+        return this.chars;
+    }
+    /**
+     * Replace the internal chars array with the provided deserialized array.
+     * Used to restore full CRDT state from a snapshot.
+     */
+    loadFromChars(chars) {
+        this.chars.length = 0;
+        for (const c of chars) {
+            this.chars.push({ ...c });
+        }
+        for (const c of chars) {
+            this.clock.update(lamportFromId(c.id));
+        }
+    }
     // ── Integration ───────────────────────────────────────────────────────────
     /**
      * Find the correct insertion index in `this.chars` for `char` using the

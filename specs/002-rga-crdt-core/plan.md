@@ -1,224 +1,167 @@
-# Implementation Plan: Week 2 — RGA CRDT Core
+# Implementation Plan: [FEATURE]
 
-**Feature Branch**: `002-rga-crdt-core`
-**Created**: 2026-07-14
-**Based on**: spec.md
+**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
+**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
 
----
+**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
-## Overview
+## Summary
 
-Week 2 adds the RGA CRDT algorithm that makes concurrent edits converge without a server
-arbitrator. The plan follows the Week 2 daily guide and is split into four phases:
+[Extract from feature spec: primary requirement + technical approach from research]
 
-1. **Core algorithm** — `CRDTChar`, `LamportClock`, `RGADocument` as pure TypeScript
-2. **Wire protocol** — update shared types; server broadcasts CRDT messages
-3. **CodeMirror integration** — `useCRDT` hook wiring local/remote ops
-4. **Convergence validation** — unit tests + two-tab manual test
+## Technical Context
 
-All changes are backward-compatible with Week 1 (the old `OpMessage` type is kept; the server
-adds routing for the two new message types).
+<!--
+  ACTION REQUIRED: Replace the content in this section with the technical details
+  for the project. The structure here is presented in advisory capacity to guide
+  the iteration process.
+-->
 
----
+**Language/Version**: [e.g., Java 21 (LTS), Java 17, Kotlin 1.9 or NEEDS CLARIFICATION]  
+**Primary Dependencies**: [e.g., Spring Boot 3.2, Spring Data JPA, Hibernate or NEEDS CLARIFICATION]  
+**Storage**: [if applicable, e.g., PostgreSQL 15, MySQL 8, MongoDB or N/A]  
+**Testing**: [e.g., JUnit 5, Mockito, TestContainers, Spring Boot Test or NEEDS CLARIFICATION]  
+**Target Platform**: [e.g., Linux server, Docker container, Kubernetes or NEEDS CLARIFICATION]
+**Project Type**: [single/web/mobile - determines source structure]  
+**Performance Goals**: [domain-specific, e.g., 1000 req/s, <500ms p95 latency or NEEDS CLARIFICATION]  
+**Constraints**: [domain-specific, e.g., <200ms p95, <512MB memory, 80% test coverage or NEEDS CLARIFICATION]  
+**Scale/Scope**: [domain-specific, e.g., 10k concurrent users, 1M transactions/day or NEEDS CLARIFICATION]
 
-## Phase 1 — CRDT Core Library (`shared/src/crdt.ts`)
+## Constitution Check
 
-### Design
+*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-The entire algorithm lives in `shared/src/crdt.ts` as a pure ES module with **no runtime
-dependencies**. This makes it independently testable with Vitest and reusable by both the
-client (React) and, later, the server (Node.js).
+**Specification-Driven Development** (Principle I)
+- [ ] Feature specification exists with prioritized user stories (P1, P2, P3...)
+- [ ] Each user story has acceptance criteria in Given-When-Then format
+- [ ] Unclear requirements marked as "NEEDS CLARIFICATION"
+- [ ] All user stories are independently testable
 
-```
-shared/src/
-├── index.ts       ← exports AppMessage union + re-exports from crdt.ts
-└── crdt.ts        ← NEW: CRDTChar, LamportClock, RGADocument
-```
+**Comprehensive Testing Standards** (Principle II)
+- [ ] Test strategy defined (JUnit 5, Mockito, TestContainers)
+- [ ] Tests will validate conformance to specifications and contracts
+- [ ] Minimum 80% code coverage required
+- [ ] Given-When-Then structure planned for all tests
 
-### CRDTChar
+**Independent User Story Implementation** (Principle III)
+- [ ] User stories prioritized and can be implemented independently
+- [ ] Foundational/shared infrastructure identified and will be completed first
+- [ ] Each story delivers standalone, demonstrable value
+- [ ] No hidden dependencies between stories
 
-```ts
-export interface CRDTChar {
-  readonly id: string;        // "clientId:lamportTick"
-  readonly value: string;     // single character
-  readonly originId: string | null;  // ID of left neighbour at insert time
-  deleted: boolean;           // tombstone flag; never removed from array
-}
-```
+**Integration Testing** (Principle IV)
+- [ ] Contract tests planned for all API endpoints/interfaces
+- [ ] TestContainers planned for database integration tests
+- [ ] Inter-service communication testing strategy defined
+- [ ] Spring Boot system tests (`@SpringBootTest`) planned for end-to-end flows
 
-### LamportClock
+**Observability and Traceability** (Principle V)
+- [ ] Structured logging approach defined
+- [ ] Error handling strategy includes context (operation, inputs, state)
+- [ ] Configuration externalization planned
+- [ ] Correlation IDs or request tracing planned
 
-Simple scalar clock:
-- `tick()` → `++this.time` → return
-- `update(received)` → `this.time = Math.max(this.time, received) + 1`
+**Quality Standards**
+- [ ] 80%+ test coverage target confirmed per service/module
+- [ ] Code review process acknowledged
+- [ ] Static analysis (SonarQube) will be used
+- [ ] Public APIs will have Javadoc with examples
 
-### RGADocument
+**Monorepo Architecture Standards** (if applicable)
+- [ ] Service boundaries clearly defined with distinct responsibilities
+- [ ] Shared code identified for extraction to libs/ (common, domain, contracts)
+- [ ] Inter-service API contracts documented and versioned
+- [ ] No circular dependencies between services/modules
+- [ ] Each affected service independently buildable and testable
+- [ ] Service/module versioning strategy defined (semantic versioning)
+- [ ] Each service has README with purpose, dependencies, and API
 
-Internal state: `readonly chars: CRDTChar[]` (includes tombstones).
+**Performance Standards** (if applicable)
+- [ ] P95 latency < 500ms target acknowledged
+- [ ] N+1 query prevention strategy defined
+- [ ] Throughput requirements identified (1000 req/s per service)
+- [ ] Cross-service communication minimized (async/event-driven patterns considered)
 
-Key operations:
+## Project Structure
 
-| Method | Complexity | Notes |
-|--------|-----------|-------|
-| `localInsert(visiblePos, value, clientId)` | O(n) | Scans visible chars to find left neighbour |
-| `localDelete(visiblePos)` | O(n) | Finds nth visible char, marks tombstone |
-| `remoteInsert(char)` | O(n) | Idempotent; uses `integrateInsert` |
-| `remoteDelete(charId)` | O(n) | Idempotent; finds by ID |
-| `getText()` | O(n) | Returns visible chars joined |
-| `getVisibleLength()` | O(n) | Count non-tombstoned |
+### Documentation (this feature)
 
-**`integrateInsert` algorithm** (RGA tie-breaking):
-
-```
-1. Find the position of originId in chars[] (index i, or -1 for head)
-2. Starting from i+1, scan right while:
-     - chars[j].originId === char.originId  (same origin = concurrent)
-     - AND chars[j].id > char.id            (existing char "wins" — keep scanning)
-3. Insert char at position j
-```
-
-This guarantees: same sequence on all clients regardless of arrival order.
-
----
-
-## Phase 2 — Wire Protocol (`shared/src/index.ts` + `server/src/index.ts`)
-
-### New message types
-
-```ts
-// shared/src/index.ts additions
-export interface CRDTInsertMessage extends BaseMessage {
-  type: 'crdt-insert';
-  char: CRDTChar;
-}
-
-export interface CRDTDeleteMessage extends BaseMessage {
-  type: 'crdt-delete';
-  charId: string;
-}
-
-// AppMessage union expands to include both
-```
-
-### Server routing
-
-`server/src/index.ts` — in the `message` handler, add cases:
-```
-case 'crdt-insert':
-case 'crdt-delete':
-  roomManager.broadcast(client.roomId, data, client.id);
-  break;
+```text
+specs/[###-feature]/
+├── plan.md              # This file (/speckit.plan command output)
+├── research.md          # Phase 0 output (/speckit.plan command)
+├── data-model.md        # Phase 1 output (/speckit.plan command)
+├── quickstart.md        # Phase 1 output (/speckit.plan command)
+├── contracts/           # Phase 1 output (/speckit.plan command)
+├── diagrams/            # Phase 1 output (/speckit.plan command)
+│   ├── system-architecture.md
+│   ├── data-flow.md
+│   └── [other diagrams as applicable]
+└── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
 ```
 
-Validation: `crdt-delete` must have a non-empty `charId` string; reject with a log if missing
-(do not broadcast). No other server-side validation needed in Week 2.
+### Source Code (repository root)
+<!--
+  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
+  for this feature. Delete unused options and expand the chosen structure with
+  real paths (e.g., apps/admin, packages/something). The delivered plan must
+  not include Option labels.
+-->
 
----
+```text
+# [REMOVE IF UNUSED] Option 1: Monorepo - Multiple Services (DEFAULT for modern-monorepo)
+services/
+├── [service-name]/
+│   ├── src/
+│   │   ├── main/java/com/bestbuy/order/[service]/
+│   │   │   ├── model/
+│   │   │   ├── service/
+│   │   │   ├── controller/
+│   │   │   └── repository/
+│   │   └── test/java/com/bestbuy/order/[service]/
+│   │       ├── contract/
+│   │       ├── integration/
+│   │       └── unit/
+│   ├── pom.xml or build.gradle
+│   └── README.md
+└── [another-service]/
 
-## Phase 3 — CodeMirror Integration (`client/src/hooks/useCRDT.ts`)
+libs/
+├── common/          # Shared utilities, exceptions, logging
+├── domain/          # Shared domain models, DTOs
+└── contracts/       # API contracts, interfaces
 
-### `useCRDT` hook contract
+apps/                # If frontend apps exist
+└── [app-name]/
 
-```ts
-function useCRDT(
-  send: (msg: object) => void,
-  userId: string,
-): {
-  extensions: Extension[];           // CodeMirror extensions to mount
-  applyRemoteOp: (msg: AppMessage) => void;  // called from useWebSocket.onMessage
-}
+# [REMOVE IF UNUSED] Option 2: Single Service (non-monorepo project)
+src/
+├── main/java/com/example/
+│   ├── model/
+│   ├── service/
+│   └── controller/
+└── test/java/com/example/
+    ├── contract/
+    ├── integration/
+    └── unit/
+
+# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
+services/
+└── [service-name]/  # Backend API in monorepo
+
+apps/
+├── ios/            # iOS app
+└── android/        # Android app
 ```
 
-The hook owns:
-- One `RGADocument` instance (ref — not state, no re-renders)
-- One `LamportClock` instance (ref)
-- An `EditorView` ref (set via a CodeMirror `ViewPlugin` or passed in)
+**Structure Decision**: [Document the selected structure and reference the real
+directories captured above]
 
-### Local change flow
+## Complexity Tracking
 
-```
-CodeMirror Transaction
-  → iterChanges(fromA, toA, fromB, toB, inserted)
-  → inserted.length > 0 → localInsert(visiblePos, char, userId) × chars
-  → toA > fromA         → localDelete(visiblePos) × (toA - fromA) deletions
-  → send({ type: 'crdt-insert' | 'crdt-delete', ... })
-```
+> **Fill ONLY if Constitution Check has violations that must be justified**
 
-Position mapping: `fromA` is the visible-text offset. The CRDT's `localInsert` / `localDelete`
-accept visible indices, so no additional offset conversion is needed.
-
-### Remote op flow
-
-```
-onMessage(data: AppMessage)
-  → if type === 'crdt-insert'  → doc.remoteInsert(data.char)
-  → if type === 'crdt-delete'  → doc.remoteDelete(data.charId)
-  → compute diff: prevText vs doc.getText()
-  → view.dispatch({ changes: { from, to, insert } })
-```
-
-Diff strategy: use `prevText` snapshot before applying op; find the minimal `from/to/insert`
-to update CodeMirror. For Week 2 this is a simple full-replace fallback if diff is complex
-(acceptable; cursor drift is a known carry-forward).
-
-### Room.tsx changes
-
-- Add `useCRDT(send, userId)` call; spread `extensions` into `EditorView`
-- Pass `applyRemoteOp` to `useWebSocket.onMessage`
-- Remove the Week 1 `EditorView.updateListener` raw-op broadcaster
-- `userId` is stored in a `useRef` initialised to `crypto.randomUUID()` on first render
-
----
-
-## Phase 4 — Tests
-
-### Unit tests: `shared/src/crdt.test.ts`
-
-| Test | Covers |
-|------|--------|
-| LamportClock tick sequence | FR-006 |
-| LamportClock update | FR-006, FR-007 |
-| localInsert single char | FR-002 |
-| localInsert multiple chars in sequence | FR-002 |
-| localDelete marks tombstone | FR-004 |
-| getText skips tombstones | FR-001 |
-| Two-client concurrent insert same origin → convergence | FR-003 |
-| Two-client concurrent insert+delete → no corruption | FR-005 |
-| remoteInsert idempotency | FR-005 |
-| remoteDelete idempotency | FR-005 |
-| remoteDelete on unknown charId is a no-op | FR-005 |
-
-### Manual convergence test (two tabs)
-
-1. Start server + client
-2. Open tab A and tab B in the same room
-3. Type "X" in tab A and "Y" in tab B simultaneously
-4. Assert both tabs display the same 2-character string
-5. Delete the first character in tab A simultaneously with an insert in tab B at position 0
-6. Assert both tabs display the same final text
-
----
-
-## File Change Summary
-
-| File | Action | Scope |
-|------|--------|-------|
-| `shared/src/crdt.ts` | **CREATE** | `CRDTChar`, `LamportClock`, `RGADocument` |
-| `shared/src/crdt.test.ts` | **CREATE** | Vitest unit tests |
-| `shared/src/index.ts` | **MODIFY** | Add `CRDTInsertMessage`, `CRDTDeleteMessage`, export `CRDTChar` |
-| `server/src/index.ts` | **MODIFY** | Route `crdt-insert` / `crdt-delete` in message handler |
-| `client/src/hooks/useCRDT.ts` | **CREATE** | CRDT ↔ CodeMirror bridge hook |
-| `client/src/pages/Room.tsx` | **MODIFY** | Replace Week 1 raw-op listener; wire `useCRDT` |
-
-No new npm packages. No schema migrations. No environment variable changes.
-
----
-
-## Risk Register
-
-| Risk | Mitigation |
-|------|-----------|
-| Off-by-one in `integrateInsert` scan | Unit test with concurrent same-origin pairs |
-| CodeMirror position mismatch after remote op | Full-text replace fallback; flag cursor drift for Week 3 |
-| Out-of-order remote ops (delete before insert) | `remoteDelete` no-ops on unknown charId; op is effectively lost — acceptable for Week 2 |
-| Paste → flood of small messages | 50 ops/sec rate limit already in server; paste of 200 chars fits within 1 s budget |
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
+| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
+| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |

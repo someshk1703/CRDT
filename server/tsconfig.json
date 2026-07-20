@@ -4,7 +4,8 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "paths": {
-      "@crdt/shared": ["../shared/src/index.ts"]
+      "@crdt/shared": ["../shared/src/index.ts"],
+      "@crdt/shared/crdt": ["../shared/src/crdt.ts"]
     }
   },
   "include": ["src"]

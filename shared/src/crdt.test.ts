@@ -236,3 +236,95 @@ describe('RGADocument — convergence', () => {
     expect(texts[0]).toHaveLength(3);
   });
 });
+
+// ─── RGADocument — getChars / loadFromChars (Week 4) ─────────────────────────
+
+describe('RGADocument — getChars and loadFromChars', () => {
+  it('getChars returns all chars including tombstones', () => {
+    const doc = new RGADocument('c1');
+    doc.localInsert(0, 'A', 'c1');
+    doc.localInsert(1, 'B', 'c1');
+    doc.localDelete(0); // tombstone A
+    const chars = doc.getChars();
+    expect(chars).toHaveLength(2);
+    expect(chars.find((c) => c.value === 'A')?.deleted).toBe(true);
+    expect(chars.find((c) => c.value === 'B')?.deleted).toBe(false);
+  });
+
+  it('loadFromChars restores text correctly after round-trip', () => {
+    const docA = new RGADocument('c1');
+    docA.localInsert(0, 'H', 'c1');
+    docA.localInsert(1, 'i', 'c1');
+    docA.localDelete(1); // delete 'i'
+
+    const serialized = docA.getChars();
+    const docB = new RGADocument('c2');
+    docB.loadFromChars(serialized);
+
+    expect(docB.getText()).toBe(docA.getText());
+    expect(docB.getText()).toBe('H');
+  });
+
+  it('loadFromChars preserves tombstones so delta ops can reference them', () => {
+    const docA = new RGADocument('c1');
+    const charH = docA.localInsert(0, 'H', 'c1');
+    docA.localDelete(0); // tombstone H
+
+    const serialized = docA.getChars();
+    const docB = new RGADocument('c2');
+    docB.loadFromChars(serialized);
+
+    // Insert after tombstoned H — originId should resolve correctly
+    docB.remoteInsert({ id: 'c3:99', value: 'X', originId: charH.id, deleted: false });
+    expect(docB.getText()).toBe('X');
+  });
+
+  it('loadFromChars advances clock so future inserts do not collide', () => {
+    const docA = new RGADocument('c1');
+    for (let i = 0; i < 10; i++) {
+      docA.localInsert(i, String(i), 'c1');
+    }
+
+    const docB = new RGADocument('c1'); // same client id
+    docB.loadFromChars(docA.getChars());
+
+    // New local insert should get a clock > 10
+    const newChar = docB.localInsert(0, 'Z', 'c1');
+    const tick = parseInt(newChar.id.split(':').at(-1) ?? '0', 10);
+    expect(tick).toBeGreaterThan(10);
+  });
+});
+
+// ─── RGADocument — catch-up replay (Week 4) ──────────────────────────────────
+
+describe('RGADocument — catch-up replay convergence', () => {
+  it('replay of 20 insert ops produces same text as original', () => {
+    const docA = new RGADocument('c1');
+    const ops: import('./crdt.js').CRDTChar[] = [];
+    for (let i = 0; i < 20; i++) {
+      ops.push(docA.localInsert(i, String.fromCharCode(65 + (i % 26)), 'c1'));
+    }
+
+    const docB = new RGADocument('c2');
+    for (const char of ops) {
+      docB.remoteInsert(char);
+    }
+
+    expect(docB.getText()).toBe(docA.getText());
+  });
+
+  it('applying the same 20 ops twice is idempotent', () => {
+    const docA = new RGADocument('c1');
+    const ops: import('./crdt.js').CRDTChar[] = [];
+    for (let i = 0; i < 20; i++) {
+      ops.push(docA.localInsert(i, String.fromCharCode(65 + (i % 26)), 'c1'));
+    }
+
+    const docB = new RGADocument('c2');
+    for (const char of ops) docB.remoteInsert(char);
+    for (const char of ops) docB.remoteInsert(char); // second pass — no-op
+
+    expect(docB.getText()).toBe(docA.getText());
+    expect(docB.getVisibleLength()).toBe(docA.getVisibleLength());
+  });
+});

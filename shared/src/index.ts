@@ -66,6 +66,21 @@ export interface CRDTDeleteMessage extends BaseMessage {
   charId: string;
 }
 
+export interface CatchupMessage {
+  type: 'catchup';
+  roomId: string;
+  userId: string;
+  snapshot: {
+    chars: import('./crdt.js').CRDTChar[];
+    lastClock: number;
+  } | null;
+  ops: Array<{
+    op_type: 'insert' | 'delete';
+    payload: import('./crdt.js').CRDTChar | { charId: string };
+    clock: number;
+  }>;
+}
+
 export type AppMessage =
   | OpMessage
   | CRDTInsertMessage
@@ -73,4 +88,5 @@ export type AppMessage =
   | PresenceMessage
   | WelcomeMessage
   | UserJoinedMessage
-  | UserLeftMessage;
+  | UserLeftMessage
+  | CatchupMessage;

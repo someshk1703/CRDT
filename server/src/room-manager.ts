@@ -1,4 +1,7 @@
 import { WebSocket } from 'ws';
+import type { RealtimeChannel } from '@supabase/supabase-js';
+import { RGADocument } from '@crdt/shared/crdt';
+import { supabase } from './db/supabase.js';
 
 const COLORS = [
   '#E53E3E', // red
@@ -36,6 +39,15 @@ export class RoomManager {
   private readonly rooms = new Map<string, Set<Client>>();
   private colorIndex = 0;
 
+  /** Server-side RGADocument per room for snapshot generation. */
+  readonly documents = new Map<string, RGADocument>();
+
+  /** Op count per room — used to trigger snapshots. */
+  private readonly opCounts = new Map<string, number>();
+
+  /** Supabase Realtime subscriptions per room (US4). */
+  private readonly realtimeSubs = new Map<string, RealtimeChannel>();
+
   join(roomId: string, client: Client): void {
     if (!this.rooms.has(roomId)) {
       this.rooms.set(roomId, new Set());
@@ -52,12 +64,60 @@ export class RoomManager {
     room.delete(client);
     if (room.size === 0) {
       this.rooms.delete(client.roomId);
+      this.documents.delete(client.roomId);
+      this.opCounts.delete(client.roomId);
       console.log(`[room:${client.roomId}] empty — removed`);
     } else {
       console.log(
         `[room:${client.roomId}] ${client.id} left — ${room.size} client(s) remain`,
       );
     }
+  }
+
+  // ── Op count ──────────────────────────────────────────────────────────────
+
+  /** Increment the op count for a room and return the new count. */
+  incrementOpCount(roomId: string): number {
+    const next = (this.opCounts.get(roomId) ?? 0) + 1;
+    this.opCounts.set(roomId, next);
+    return next;
+  }
+
+  getOpCount(roomId: string): number {
+    return this.opCounts.get(roomId) ?? 0;
+  }
+
+  /** Seed op count from the DB on first client join (so snapshot trigger stays accurate). */
+  seedOpCount(roomId: string, count: number): void {
+    if (!this.opCounts.has(roomId)) {
+      this.opCounts.set(roomId, count);
+    }
+  }
+
+  // ── Realtime subscriptions (US4) ──────────────────────────────────────────
+
+  /** Subscribe to Realtime INSERT events on `operations` for this room. */
+  subscribeRoom(roomId: string, onOp: (op: object) => void): void {
+    if (this.realtimeSubs.has(roomId)) return;
+    const channel = supabase
+      .channel(`room:${roomId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'operations', filter: `room_id=eq.${roomId}` },
+        (payload) => onOp(payload.new),
+      )
+      .subscribe();
+    this.realtimeSubs.set(roomId, channel);
+    console.log(`[realtime] subscribed to room=${roomId}`);
+  }
+
+  /** Unsubscribe and remove the Realtime channel for this room. */
+  unsubscribeRoom(roomId: string): void {
+    const channel = this.realtimeSubs.get(roomId);
+    if (!channel) return;
+    void supabase.removeChannel(channel);
+    this.realtimeSubs.delete(roomId);
+    console.log(`[realtime] unsubscribed from room=${roomId}`);
   }
 
   /**
