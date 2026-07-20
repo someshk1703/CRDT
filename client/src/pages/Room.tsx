@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { basicSetup, EditorView } from 'codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useCRDT } from '../hooks/useCRDT';
+import { usePresence } from '../hooks/usePresence';
 
 /**
  * Reads the WS server URL from the Vite env variable, falling back to localhost
@@ -17,68 +19,114 @@ const STATUS_COLORS: Record<string, string> = {
   error: '#f38ba8',
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  open: 'Connected',
+  connecting: 'Connecting',
+  closed: 'Disconnected',
+  error: 'Error',
+};
+
 export function Room() {
   const { roomId } = useParams<{ roomId: string }>();
   const editorContainerRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef<EditorView | null>(null);
+  const editorMountedRef = useRef(false);
 
-  /** Week 1 broadcast log — replaced by actual document sync in Week 2. */
-  const [broadcastLog, setBroadcastLog] = useState<string[]>([]);
+  // Stable userId for this session (one UUID per tab)
+  const userIdRef = useRef(crypto.randomUUID());
 
   const wsUrl = roomId ? `${WS_BASE}/room/${roomId}` : null;
 
-  const onMessage = useCallback((data: unknown) => {
-    const line = typeof data === 'object'
-      ? JSON.stringify(data)
-      : String(data);
-    setBroadcastLog((prev) => [...prev.slice(-99), line]);
-  }, []);
+  // ── useCRDT ─────────────────────────────────────────────────────────────────
 
-  const { send, status } = useWebSocket(wsUrl, { onMessage });
+  const {
+    extensions: crdtExtensions,
+    applyRemoteOp,
+    setView: setCrdtView,
+    sendRef,
+  } = useCRDT(userIdRef.current, roomId ?? '', {
+    // Wire cursor reconciliation: when a remote CRDT op shifts the document,
+    // adjust all tracked remote cursor positions accordingly.
+    onRemoteChange: (from, removed, inserted) => {
+      reconcileCursors(from, removed, inserted);
+    },
+  });
+
+  // ── usePresence ─────────────────────────────────────────────────────────────
+
+  // send is provided by useWebSocket; forward via ref to avoid circular hook deps
+  const sendFnRef = useRef<(msg: object) => void>(() => { /* noop until WS connects */ });
+
+  const {
+    handleMessage: handlePresenceMessage,
+    sendPresence,
+    setView: setPresenceView,
+    extensions: presenceExtensions,
+    reconcileCursors,
+  } = usePresence({
+    userId: userIdRef.current,
+    roomId: roomId ?? '',
+    send: (msg) => sendFnRef.current(msg),
+  });
+
+  // ── Unified message handler ──────────────────────────────────────────────────
+
+  const handleMessage = useCallback(
+    (msg: Parameters<typeof applyRemoteOp>[0]) => {
+      applyRemoteOp(msg);        // handles crdt-insert, crdt-delete
+      handlePresenceMessage(msg); // handles welcome, presence, user-left
+    },
+    [applyRemoteOp, handlePresenceMessage],
+  );
+
+  const { send, status } = useWebSocket(wsUrl, { onMessage: handleMessage });
+
+  // Keep useCRDT's sendRef and the presence sendFnRef in sync each render
+  sendRef.current = send;
+  sendFnRef.current = send;
+
+  // ── Cursor extension: fire sendPresence on selection changes ─────────────────
+
+  const sendPresenceRef = useRef(sendPresence);
+  sendPresenceRef.current = sendPresence;
+
+  const selectionListenerExtension = useRef(
+    EditorView.updateListener.of((update) => {
+      if (update.selectionSet) {
+        const { from, to } = update.state.selection.main;
+        sendPresenceRef.current({ from, to });
+      }
+    }),
+  ).current;
 
   // ── Mount CodeMirror ────────────────────────────────────────────────────────
-  // Important: send is a stable ref from useCallback, safe to include in deps.
 
   useEffect(() => {
-    if (!editorContainerRef.current || viewRef.current) return;
+    if (!editorContainerRef.current || editorMountedRef.current) return;
+    editorMountedRef.current = true;
 
     const view = new EditorView({
       extensions: [
         basicSetup,
         javascript(),
-        /**
-         * Week 1: on every local document change, broadcast the raw text delta
-         * over WebSocket so the other tab can see it in the broadcast log.
-         *
-         * Week 2 replaces this listener with a proper CRDT op generator that
-         * intercepts Transactions and produces CRDTChar inserts/deletes.
-         */
-        EditorView.updateListener.of((update) => {
-          if (!update.docChanged) return;
-          update.transactions.forEach((tr) => {
-            tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
-              send({
-                type: 'op',
-                payload: {
-                  from: fromA,
-                  to: toA,
-                  insert: inserted.toString(),
-                },
-              });
-            });
-          });
-        }),
+        // Week 2: CRDT sync
+        ...crdtExtensions,
+        // Week 3: live cursors & awareness
+        presenceExtensions,
+        selectionListenerExtension,
       ],
       parent: editorContainerRef.current,
     });
 
-    viewRef.current = view;
+    setCrdtView(view);
+    setPresenceView(view);
 
     return () => {
       view.destroy();
-      viewRef.current = null;
+      editorMountedRef.current = false;
     };
-  }, [send]);
+    // Stable refs — safe to omit from deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Guard: no roomId ────────────────────────────────────────────────────────
 
@@ -128,10 +176,22 @@ export function Room() {
           Copy link
         </button>
 
+        {/* User identity pill */}
+        <span style={{
+          fontSize: '0.72rem',
+          padding: '2px 8px',
+          borderRadius: '999px',
+          background: '#313244',
+          color: '#cdd6f4',
+          fontFamily: 'monospace',
+        }}>
+          User-{userIdRef.current.slice(0, 4).toUpperCase()}
+        </span>
+
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           {status === 'error' && (
             <span style={{ fontSize: '0.72rem', color: '#f38ba8' }}>
-              having trouble connecting…
+              Having trouble connecting…
             </span>
           )}
           <span style={{
@@ -142,7 +202,7 @@ export function Room() {
             color: '#1e1e2e',
             fontWeight: 600,
           }}>
-            {status}
+            {STATUS_LABELS[status] ?? status}
           </span>
         </span>
       </div>
@@ -152,32 +212,7 @@ export function Room() {
         ref={editorContainerRef}
         style={{ flex: 1, overflow: 'auto', background: '#1e1e2e' }}
       />
-
-      {/* ── Week 1 broadcast log ── */}
-      <div style={{
-        height: '180px',
-        overflowY: 'auto',
-        background: '#11111b',
-        borderTop: '1px solid #313244',
-        padding: '0.5rem 1rem',
-        fontFamily: 'monospace',
-        fontSize: '0.72rem',
-        color: '#a6adc8',
-        flexShrink: 0,
-      }}>
-        <div style={{ color: '#45475a', marginBottom: '4px', userSelect: 'none' }}>
-          ▸ Broadcast log (Week 1 debug — removed in Week 2):
-        </div>
-        {broadcastLog.length === 0 ? (
-          <div style={{ color: '#313244' }}>
-            No broadcasts yet — open another tab at this URL and type something.
-          </div>
-        ) : (
-          broadcastLog.map((line, i) => (
-            <div key={i} style={{ lineHeight: '1.6' }}>{line}</div>
-          ))
-        )}
-      </div>
     </div>
   );
 }
+

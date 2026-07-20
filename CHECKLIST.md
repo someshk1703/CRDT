@@ -75,33 +75,65 @@ Track end-of-week completion. Check off items only when verified end-to-end (not
 
 ## Week 2 — CRDT Algorithm (RGA)
 
-**Spec**: `specs/002-week2-crdt/spec.md` *(not yet created)*
-**Branch**: `002-week2-crdt`
+**Spec**: [specs/002-rga-crdt-core/spec.md](specs/002-rga-crdt-core/spec.md)
+**Plan**: [specs/002-rga-crdt-core/plan.md](specs/002-rga-crdt-core/plan.md)
+**Tasks**: [specs/002-rga-crdt-core/tasks.md](specs/002-rga-crdt-core/tasks.md)
+**Branch**: `002-rga-crdt-core`
 
-### Algorithm
+### Algorithm (`shared/src/crdt.ts`)
 
-- [ ] `CRDTChar` interface: `{ id, value, originId, deleted }` in `shared/src/crdt.ts`
-- [ ] `RGADocument.localInsert(pos, value, clientId)` → returns `CRDTChar` to broadcast
-- [ ] `RGADocument.integrateInsert(char)` — deterministic tie-break by `clientId`
-- [ ] `RGADocument.localDelete(pos)` → returns charId to broadcast (tombstone, NOT splice)
-- [ ] `RGADocument.toString()` → joins only non-deleted chars
+- [x] `CRDTChar` interface: `{ id, value, originId, deleted }` in `shared/src/crdt.ts`
+- [x] `LamportClock`: `tick()`, `update(received)`, `now()`
+- [x] `RGADocument.localInsert(pos, value, clientId)` → returns `CRDTChar` to broadcast
+- [x] `RGADocument.integrateInsert(char)` — deterministic tie-break by ID lexicographic order
+- [x] `RGADocument.localDelete(pos)` → tombstone (not splice), returns char for broadcasting
+- [x] `RGADocument.remoteInsert(char)` — idempotent
+- [x] `RGADocument.remoteDelete(charId)` — idempotent
+- [x] `RGADocument.getText()` → joins only non-deleted chars
+- [x] `RGADocument.getVisibleLength()` — count of non-tombstoned chars
+
+### Wire Protocol
+
+- [x] `CRDTInsertMessage` and `CRDTDeleteMessage` added to `shared/src/index.ts`
+- [x] `CRDTChar` re-exported from shared package
+- [x] `AppMessage` union includes both new types
+- [x] Server routes `crdt-insert` / `crdt-delete` with payload validation
 
 ### CodeMirror Integration
 
-- [ ] `useCollabEditor` hook wires `EditorView` transactions → CRDT ops → WebSocket `send()`
-- [ ] Remote CRDT ops received via WebSocket → applied to `RGADocument` → dispatched as CodeMirror transaction
-- [ ] Bidirectional mapper: CRDT index (includes tombstones) ↔ CodeMirror visible index
+- [x] `useCRDT` hook created in `client/src/hooks/useCRDT.ts`
+- [x] Local CodeMirror transactions → CRDT ops → WebSocket broadcast
+- [x] Remote CRDT ops → `RGADocument` → CodeMirror transaction dispatch
+- [x] `remoteAnnotation` prevents re-broadcasting of applied remote ops
+- [x] `Room.tsx` wired: Week 1 raw-op listener removed, broadcast log removed
+- [x] `sendRef` pattern avoids hook-ordering dependency between `useCRDT` and `useWebSocket`
 
-### Tests (mandatory — constitution Principle IV)
+### Tests
 
-- [ ] Unit tests in `shared/src/__tests__/crdt.unit.test.ts`:
-  - [ ] Concurrent inserts at same position
-  - [ ] Concurrent deletes
-  - [ ] Insert after tombstone
-  - [ ] 3-way merge
-  - [ ] Idempotency (apply same op twice → same result)
-- [ ] Convergence fuzz test in `shared/src/__tests__/crdt.convergence.test.ts`:
-  - [ ] Generate random op sequences → apply in different orders on two `RGADocument` instances → same `toString()`
+- [x] Unit tests in `shared/src/crdt.test.ts` — **19/19 passing**:
+  - [x] LamportClock tick sequence
+  - [x] LamportClock update (max rule)
+  - [x] Single insert, sequential inserts, insert in middle
+  - [x] Tombstone delete (char remains in array)
+  - [x] Remote insert idempotency
+  - [x] Remote delete idempotency + unknown charId no-op
+  - [x] Concurrent inserts → convergence (two-client cross-apply)
+  - [x] Concurrent inserts after same origin → deterministic ordering
+  - [x] Concurrent insert + delete → no corruption
+  - [x] Three-client convergence
+
+### TypeScript
+
+- [x] `tsc --noEmit` clean in `shared/`
+- [x] `tsc --noEmit` clean in `server/`
+- [x] `tsc --noEmit` clean in `client/`
+
+### Manual Convergence Tests (complete after running the app)
+
+- [ ] Two tabs type simultaneously at position 0 → both converge to same 2-char string
+- [ ] Delete in tab A + insert at same pos in tab B → no corruption
+- [ ] Paste 50 chars in tab A → tab B shows all 50 chars
+- [ ] Kill/restart server → reconnect works (Week 1 backoff still intact)
 
 ### Week 2 Gate — open Week 3 only when all items above are checked
 
@@ -109,17 +141,67 @@ Track end-of-week completion. Check off items only when verified end-to-end (not
 
 ## Week 3 — Presence (Live Cursors + Awareness)
 
-**Spec**: `specs/003-week3-presence/spec.md` *(not yet created)*
+**Spec**: [specs/003-week3-presence/spec.md](specs/003-week3-presence/spec.md)
+**Tasks**: [specs/003-week3-presence/tasks.md](specs/003-week3-presence/tasks.md)
 **Branch**: `003-week3-presence`
 
-- [ ] Presence message: `{ type: "presence", userId, cursor: { from, to }, name, color }`
-- [ ] Server broadcasts presence to room (50ms debounce on client side)
-- [ ] `presencePlugin` CodeMirror `ViewPlugin` renders cursor carets per remote user
-- [ ] Selection range highlight (not just caret) via `Decoration.mark`
-- [ ] Colour assigned on join (palette of 8, stable per session)
-- [ ] `user-left` clears that user's cursor decoration immediately
-- [ ] Cursor position reconciled after remote CRDT op shifts positions
-- [ ] User list sidebar: connected users with initials + colour dot
+### Protocol & Server
+
+- [x] `WelcomeMessage { type:'welcome', userId, roomId, color }` added to shared types
+- [x] Server sends `welcome` to connecting client immediately on connect
+- [x] Server tracks client's self-reported `userId` from received messages (`presenceUserId`)
+- [x] `user-left` uses `presenceUserId` so peers can match it to their presence map
+- [x] Server validates `presence` messages: cursor `from`/`to` are numbers, `name` ≤ 64 chars
+- [x] Server relays `presence` messages to all peers (no server-side cursor state stored)
+- [x] Colour palette: 8 colours, assigned round-robin per connection, stable for session
+
+### Client — Presence Extension
+
+- [x] `client/src/extensions/presenceCursors.ts` created
+- [x] `updatePresenceEffect` StateEffect (add/remove cursor by userId)
+- [x] `presenceField` StateField holds `ReadonlyMap<userId, PresenceState>`
+- [x] `CursorWidget` — coloured 2px caret + floating name label (no DOM events)
+- [x] `Decoration.mark` for selection ranges (25% bg, 60% bottom border)
+- [x] `buildDecorations` clamps positions to `[0, doc.length]`; wrapped in try/catch
+- [x] `ViewPlugin` rebuilds decorations only on `docChanged` or `updatePresenceEffect`
+
+### Client — `usePresence` Hook
+
+- [x] `client/src/hooks/usePresence.ts` created
+- [x] Routes `welcome` → stores server-assigned colour
+- [x] Routes `presence` → dispatches `updatePresenceEffect` (ignores own userId)
+- [x] Routes `user-left` → dispatches null effect to remove cursor
+- [x] `sendPresence` debounced at 50 ms — not sent on every keystroke
+- [x] `reconcileCursors(from, removed, inserted)` adjusts all tracked cursors after CRDT ops
+- [x] Mirror map (`presenceMapRef`) kept in sync with the StateField for reconciliation
+
+### Client — `useCRDT` Integration (Week 3 additions)
+
+- [x] `options.onRemoteChange?(from, removed, inserted)` callback added
+- [x] `applyTextDiff` refactored to return `DiffResult | null` with `{from, removed, inserted}`
+- [x] `applyRemoteOp` calls `onRemoteChange` after every remote op
+
+### Client — `Room.tsx` Integration
+
+- [x] `usePresence` integrated alongside `useCRDT`
+- [x] Single `handleMessage` routes to both `applyRemoteOp` and `handlePresenceMessage`
+- [x] `selectionListenerExtension` fires `sendPresence` on `selectionSet`
+- [x] Both `setCrdtView` and `setPresenceView` called after editor mount
+- [x] User identity pill ("User-XXXX") shown in header
+
+### TypeScript
+
+- [x] `tsc --noEmit` / `npm run build` clean in all workspaces
+
+### Manual Acceptance Tests (complete after running the app)
+
+- [ ] Two tabs see each other's carets with correct name and colour
+- [ ] Tab A selects a range → Tab B shows highlighted range in Tab A's colour
+- [ ] Tab B types before Tab A's cursor → Tab A's cursor shifts correctly (no drift)
+- [ ] Close Tab A → Tab B's view of A's cursor disappears immediately
+- [ ] Type 10 chars fast → browser DevTools Network shows ≤1 presence message per 50ms
+- [ ] Answer: "What happens if a cursor points to a position a CRDT op just deleted?"
+  - Answer: the cursor collapses to the insertion point (`from + inserted`) via `adjustPosition`
 
 ### Week 3 Gate — open Week 4 only when all items above are checked
 

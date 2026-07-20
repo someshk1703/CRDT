@@ -92,7 +92,7 @@ export function Home() {
       <p style={styles.subtitle}>
         Real-time collaborative code editing powered by the RGA CRDT algorithm.
         <br />
-        Week 1 — WebSocket plumbing.
+        Week 3 — RGA CRDT with live cursors and real-time presence.
       </p>
 
       <div style={styles.card}>

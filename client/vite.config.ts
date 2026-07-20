@@ -13,8 +13,7 @@ export default defineConfig({
       // without compiling it first — Vite handles TypeScript directly.
       '@crdt/shared': path.resolve(__dirname, '../shared/src'),
     },
-  },
-  server: {
+  },  server: {
     port: 5173,
   },
 });
