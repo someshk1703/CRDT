@@ -1,60 +1,60 @@
-import { useCallback, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { basicSetup, EditorView } from 'codemirror';
-import { javascript } from '@codemirror/lang-javascript';
+import { Compartment } from '@codemirror/state';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useCRDT } from '../hooks/useCRDT';
 import { usePresence } from '../hooks/usePresence';
+import { useSession } from '../hooks/useSession';
+import { getRoom, renameRoom, type RoomInfo } from '../hooks/useRooms';
+import { getLanguageExtension } from '../extensions/languageSwitcher';
+import { Toolbar } from '../components/Toolbar';
 
-/**
- * Reads the WS server URL from the Vite env variable, falling back to localhost
- * for local development. In production, set VITE_WS_URL in your deployment env.
- */
-const WS_BASE = import.meta.env.VITE_WS_URL ?? 'ws://localhost:3001';
-
-const STATUS_COLORS: Record<string, string> = {
-  open: '#a6e3a1',
-  connecting: '#f9e2af',
-  closed: '#f38ba8',
-  error: '#f38ba8',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  open: 'Connected',
-  connecting: 'Connecting',
-  closed: 'Disconnected',
-  error: 'Error',
-};
+const WS_BASE = (import.meta.env.VITE_WS_URL as string | undefined) ?? 'ws://localhost:3001';
 
 export function Room() {
   const { roomId } = useParams<{ roomId: string }>();
+  const navigate = useNavigate();
+  const { session, loading: authLoading } = useSession();
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorMountedRef = useRef(false);
+  const viewRef = useRef<EditorView | null>(null);
 
-  // Stable userId for this session (one UUID per tab)
-  const userIdRef = useRef(crypto.randomUUID());
+  const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
+  const [roomNotFound, setRoomNotFound] = useState(false);
+  const [language, setLanguage] = useState('javascript');
+  const languageCompartment = useRef(new Compartment()).current;
 
-  const wsUrl = roomId ? `${WS_BASE}/room/${roomId}` : null;
+  // WS URL includes auth token
+  const wsUrl = roomId && session
+    ? `${WS_BASE}/room/${roomId}?token=${session.access_token}`
+    : null;
 
-  // ── useCRDT ─────────────────────────────────────────────────────────────────
+  // ── useCRDT ───────────────────────────────────────────────────────────────
 
   const {
     extensions: crdtExtensions,
     applyRemoteOp,
     setView: setCrdtView,
     sendRef,
-  } = useCRDT(userIdRef.current, roomId ?? '', {
-    // Wire cursor reconciliation: when a remote CRDT op shifts the document,
-    // adjust all tracked remote cursor positions accordingly.
+    sendLanguageChange,
+  } = useCRDT(session?.user.id ?? 'anon', roomId ?? '', {
     onRemoteChange: (from, removed, inserted) => {
       reconcileCursors(from, removed, inserted);
     },
+    onLanguageChange: (lang) => {
+      setLanguage(lang);
+      if (viewRef.current) {
+        viewRef.current.dispatch({
+          effects: languageCompartment.reconfigure(getLanguageExtension(lang)),
+        });
+      }
+    },
   });
 
-  // ── usePresence ─────────────────────────────────────────────────────────────
+  // ── usePresence ───────────────────────────────────────────────────────────
 
-  // send is provided by useWebSocket; forward via ref to avoid circular hook deps
-  const sendFnRef = useRef<(msg: object) => void>(() => { /* noop until WS connects */ });
+  const sendFnRef = useRef<(msg: object) => void>(() => {});
 
   const {
     handleMessage: handlePresenceMessage,
@@ -62,29 +62,51 @@ export function Room() {
     setView: setPresenceView,
     extensions: presenceExtensions,
     reconcileCursors,
+    connectedUsers,
   } = usePresence({
-    userId: userIdRef.current,
+    userId: session?.user.id ?? 'anon',
     roomId: roomId ?? '',
     send: (msg) => sendFnRef.current(msg),
   });
 
-  // ── Unified message handler ──────────────────────────────────────────────────
-
   const handleMessage = useCallback(
     (msg: Parameters<typeof applyRemoteOp>[0]) => {
-      applyRemoteOp(msg);        // handles crdt-insert, crdt-delete
-      handlePresenceMessage(msg); // handles welcome, presence, user-left
+      applyRemoteOp(msg);
+      handlePresenceMessage(msg);
+      // room-meta: update room name
+      const type = (msg as Record<string, unknown>)['type'];
+      if (type === 'room-meta') {
+        const name = (msg as Record<string, unknown>)['name'] as string;
+        if (name) setRoomInfo((prev) => prev ? { ...prev, name } : prev);
+      }
     },
     [applyRemoteOp, handlePresenceMessage],
   );
 
   const { send, status } = useWebSocket(wsUrl, { onMessage: handleMessage });
-
-  // Keep useCRDT's sendRef and the presence sendFnRef in sync each render
   sendRef.current = send;
   sendFnRef.current = send;
 
-  // ── Cursor extension: fire sendPresence on selection changes ─────────────────
+  // Close WS when session is cleared (sign-out) — M1
+  const wsRef = useRef<WebSocket | null>(null);
+  useEffect(() => {
+    if (!session) {
+      wsRef.current?.close();
+    }
+  }, [session]);
+
+  // ── Load room metadata ────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!roomId || !session) return;
+    getRoom(roomId).then((info) => {
+      if (!info) { setRoomNotFound(true); return; }
+      setRoomInfo(info);
+      setLanguage(info.language);
+    }).catch(() => setRoomNotFound(true));
+  }, [roomId, session]);
+
+  // ── Cursor selection listener ─────────────────────────────────────────────
 
   const sendPresenceRef = useRef(sendPresence);
   sendPresenceRef.current = sendPresence;
@@ -98,7 +120,7 @@ export function Room() {
     }),
   ).current;
 
-  // ── Mount CodeMirror ────────────────────────────────────────────────────────
+  // ── Mount CodeMirror ──────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!editorContainerRef.current || editorMountedRef.current) return;
@@ -107,112 +129,91 @@ export function Room() {
     const view = new EditorView({
       extensions: [
         basicSetup,
-        javascript(),
-        // Week 2: CRDT sync
+        languageCompartment.of(getLanguageExtension(language)),
         ...crdtExtensions,
-        // Week 3: live cursors & awareness
         presenceExtensions,
         selectionListenerExtension,
       ],
       parent: editorContainerRef.current,
     });
 
+    viewRef.current = view;
     setCrdtView(view);
     setPresenceView(view);
 
     return () => {
       view.destroy();
+      viewRef.current = null;
       editorMountedRef.current = false;
     };
-    // Stable refs — safe to omit from deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Guard: no roomId ────────────────────────────────────────────────────────
+  // Update language compartment when language state changes after mount
+  useEffect(() => {
+    if (viewRef.current) {
+      viewRef.current.dispatch({
+        effects: languageCompartment.reconfigure(getLanguageExtension(language)),
+      });
+    }
+  }, [language, languageCompartment]);
 
-  if (!roomId) {
-    return (
-      <div style={{ padding: '2rem', color: '#f38ba8', background: '#1e1e2e', minHeight: '100vh' }}>
-        No room ID in URL. Go back to <a href="/" style={{ color: '#89b4fa' }}>home</a>.
-      </div>
-    );
+  // ── Auth guard ────────────────────────────────────────────────────────────
+
+  if (authLoading) {
+    return <div style={{ padding: '2rem', color: '#cdd6f4', background: '#1e1e2e', minHeight: '100vh' }}>Loading…</div>;
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  if (!session) {
+    navigate('/');
+    return null;
+  }
+
+  if (!roomId) {
+    return <div style={{ padding: '2rem', color: '#f38ba8', background: '#1e1e2e', minHeight: '100vh' }}>
+      No room ID in URL. <a href="/" style={{ color: '#89b4fa' }}>Go home</a>.
+    </div>;
+  }
+
+  if (roomNotFound) {
+    return <div style={{ padding: '2rem', color: '#f38ba8', background: '#1e1e2e', minHeight: '100vh' }}>
+      Room not found. <a href="/" style={{ color: '#89b4fa' }}>Go home</a>.
+    </div>;
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      {/* ── Header ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.75rem',
-        padding: '0.5rem 1rem',
-        background: '#181825',
-        borderBottom: '1px solid #313244',
-        flexShrink: 0,
-      }}>
-        <span style={{ fontWeight: 700, color: '#cdd6f4' }}>CRDT Editor</span>
-        <span style={{ fontSize: '0.8rem', color: '#6c7086' }}>
-          Room: <span style={{ color: '#89b4fa' }}>{roomId}</span>
-        </span>
-
-        <button
-          style={{
-            marginLeft: '0.5rem',
-            fontSize: '0.75rem',
-            padding: '2px 8px',
-            borderRadius: '6px',
-            border: '1px solid #45475a',
-            background: 'transparent',
-            color: '#a6adc8',
-            cursor: 'pointer',
-          }}
-          onClick={() => {
-            void navigator.clipboard.writeText(window.location.href);
-          }}
-          title="Copy share link"
-        >
-          Copy link
-        </button>
-
-        {/* User identity pill */}
-        <span style={{
-          fontSize: '0.72rem',
-          padding: '2px 8px',
-          borderRadius: '999px',
-          background: '#313244',
-          color: '#cdd6f4',
-          fontFamily: 'monospace',
-        }}>
-          User-{userIdRef.current.slice(0, 4).toUpperCase()}
-        </span>
-
-        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {status === 'error' && (
-            <span style={{ fontSize: '0.72rem', color: '#f38ba8' }}>
-              Having trouble connecting…
-            </span>
-          )}
-          <span style={{
-            fontSize: '0.72rem',
-            padding: '2px 10px',
-            borderRadius: '999px',
-            background: STATUS_COLORS[status] ?? '#45475a',
-            color: '#1e1e2e',
-            fontWeight: 600,
-          }}>
-            {STATUS_LABELS[status] ?? status}
-          </span>
-        </span>
-      </div>
-
-      {/* ── CodeMirror editor ── */}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#1e1e2e' }}>
+      <Toolbar
+        roomName={roomInfo?.name ?? roomId}
+        roomSlug={roomId}
+        language={language}
+        onLanguageChange={(lang) => {
+          setLanguage(lang);
+          sendLanguageChange(lang);
+        }}
+        onRoomNameChange={(name) => {
+          renameRoom(roomId, name).then((updated) => {
+            setRoomInfo((prev) => prev ? { ...prev, name: updated.name } : prev);
+          }).catch(console.error);
+        }}
+        connectedUsers={connectedUsers}
+      />
       <div
         ref={editorContainerRef}
-        style={{ flex: 1, overflow: 'auto', background: '#1e1e2e' }}
+        style={{ flex: 1, overflow: 'auto', fontSize: '14px' }}
       />
+      {status === 'error' && (
+        <div style={{ padding: '0.4rem 1rem', background: '#f38ba8', color: '#1e1e2e', fontSize: '0.8rem' }}>
+          Connection error — retrying…
+        </div>
+      )}
     </div>
   );
 }
 
+/**
+ * Reads the WS server URL from the Vite env variable, falling back to localhost
+ * for local development. In production, set VITE_WS_URL in your deployment env.
+ */

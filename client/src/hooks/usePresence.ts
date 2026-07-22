@@ -8,7 +8,7 @@
  *  - Drives the presenceCursors CodeMirror extension via updatePresenceEffect.
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EditorView } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
 import type { AppMessage } from '@crdt/shared';
@@ -38,16 +38,10 @@ export interface UsePresenceReturn {
   setView: (view: EditorView) => void;
   /** CodeMirror extensions — include in EditorView along with CRDT extensions. */
   extensions: Extension;
-  /**
-   * Called by useCRDT after every remote op is applied.
-   * Walks all tracked remote cursors through the adjustment formula and
-   * dispatches updatePresenceEffect so decorations rebuild immediately.
-   *
-   * @param from     Start offset of the changed region in the document
-   * @param removed  Number of characters removed
-   * @param inserted Number of characters inserted
-   */
+  /** Reconcile cursors after remote CRDT ops shift the document. */
   reconcileCursors: (from: number, removed: number, inserted: number) => void;
+  /** All currently connected users (self + peers) for Toolbar avatar stack. */
+  connectedUsers: Array<{ userId: string; username: string; avatarUrl: string; color: string }>;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -63,6 +57,9 @@ export function usePresence({
   // Server-assigned colour received via welcome message
   const colorRef = useRef<string>('#89b4fa');
 
+  // Self identity from welcome message (Week 5)
+  const selfRef = useRef<{ username: string; avatarUrl: string }>({ username: '', avatarUrl: '' });
+
   // Stable ref to the send function to avoid stale closures in debounce callbacks
   const sendRef = useRef(send);
   sendRef.current = send;
@@ -72,8 +69,10 @@ export function usePresence({
   const pendingCursorRef = useRef<{ from: number; to: number } | null>(null);
 
   // Mirror of what's in the presenceField StateField — used for reconciliation
-  // without reading the editor state (which may be null during unmount)
   const presenceMapRef = useRef<Map<string, PresenceState>>(new Map());
+
+  // Connected users list (self + peers) for Toolbar
+  const [connectedUsers, setConnectedUsers] = useState<Array<{ userId: string; username: string; avatarUrl: string; color: string }>>([]);
 
   // ── setView ─────────────────────────────────────────────────────────────────
 
@@ -107,29 +106,56 @@ export function usePresence({
       const type = (msg as Record<string, unknown>)['type'];
 
       if (type === 'welcome') {
-        // Server-assigned colour for our own outgoing presence messages
-        const color = (msg as Record<string, unknown>)['color'];
-        if (typeof color === 'string' && color.length > 0) {
-          colorRef.current = color;
+        const m = msg as Record<string, unknown>;
+        const color = m['color'];
+        if (typeof color === 'string' && color.length > 0) colorRef.current = color;
+        // Capture self identity for connectedUsers
+        selfRef.current = {
+          username: typeof m['username'] === 'string' ? m['username'] : '',
+          avatarUrl: typeof m['avatarUrl'] === 'string' ? m['avatarUrl'] : '',
+        };
+        setConnectedUsers((prev) => {
+          const withoutSelf = prev.filter((u) => u.userId !== userId);
+          return [{ userId, username: selfRef.current.username, avatarUrl: selfRef.current.avatarUrl, color: colorRef.current }, ...withoutSelf];
+        });
+        return;
+      }
+
+      if (type === 'user-joined') {
+        const m = msg as Record<string, unknown>;
+        const joinedId = m['userId'] as string;
+        if (joinedId && joinedId !== userId) {
+          setConnectedUsers((prev) => {
+            if (prev.some((u) => u.userId === joinedId)) return prev;
+            return [...prev, {
+              userId: joinedId,
+              username: typeof m['username'] === 'string' ? m['username'] : joinedId.slice(0, 8),
+              avatarUrl: typeof m['avatarUrl'] === 'string' ? m['avatarUrl'] : '',
+              color: typeof m['color'] === 'string' ? m['color'] : '#89b4fa',
+            }];
+          });
         }
         return;
       }
 
       if (type === 'presence') {
-        const m = msg as {
-          userId: string;
-          cursor: { from: number; to: number };
-          name: string;
-          color: string;
-        };
-        // Ignore our own presence echoed back (server excludes sender, but be defensive)
-        if (m.userId === userId) return;
-
-        dispatchEffect(m.userId, {
-          cursor: m.cursor,
-          name: m.name,
-          color: m.color,
-        });
+        const m = msg as Record<string, unknown>;
+        const presUserId = m['userId'] as string;
+        if (presUserId === userId) return;
+        // Update identity if server provided it
+        if (typeof m['username'] === 'string' || typeof m['avatarUrl'] === 'string') {
+          setConnectedUsers((prev) => prev.map((u) =>
+            u.userId === presUserId
+              ? { ...u, username: typeof m['username'] === 'string' ? m['username'] : u.username, avatarUrl: typeof m['avatarUrl'] === 'string' ? m['avatarUrl'] : u.avatarUrl }
+              : u,
+          ));
+        }
+        const cursor = m['cursor'] as { from: number; to: number };
+        const name = typeof m['name'] === 'string' ? m['name'] : (typeof m['username'] === 'string' ? m['username'] : presUserId.slice(0, 8));
+        const color = typeof m['color'] === 'string' ? m['color'] : '#89b4fa';
+        if (presUserId && cursor && typeof cursor.from === 'number') {
+          dispatchEffect(presUserId, { cursor, name, color });
+        }
         return;
       }
 
@@ -137,6 +163,7 @@ export function usePresence({
         const leftId = (msg as Record<string, unknown>)['userId'];
         if (typeof leftId === 'string') {
           dispatchEffect(leftId, null);
+          setConnectedUsers((prev) => prev.filter((u) => u.userId !== leftId));
         }
       }
     },
@@ -212,6 +239,7 @@ export function usePresence({
     setView,
     extensions: presenceCursors,
     reconcileCursors,
+    connectedUsers,
   };
 }
 

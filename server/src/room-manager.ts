@@ -20,9 +20,8 @@ export interface Client {
   ws: WebSocket;
   roomId: string;
   /**
-   * User identity — random UUID per connection in Week 1–4.
-   * Week 5: derived from a validated JWT; becomes stable across reconnects.
-   * Do NOT assume this value is stable before Week 5.
+   * User identity — Week 5: derived from the validated JWT; stable across
+   * reconnects (Supabase user ID). Pre-Week-5 codepath uses a random UUID.
    */
   userId: string;
   /**
@@ -33,6 +32,14 @@ export interface Client {
    */
   presenceUserId: string | undefined;
   color: string;
+}
+
+/** Auth identity + room context stored per connection (Week 5). */
+export interface ClientMeta {
+  userId: string;
+  username: string;
+  avatarUrl: string;
+  roomId: string;
 }
 
 export class RoomManager {
@@ -48,6 +55,9 @@ export class RoomManager {
   /** Supabase Realtime subscriptions per room (US4). */
   private readonly realtimeSubs = new Map<string, RealtimeChannel>();
 
+  /** Authenticated user metadata keyed by WebSocket instance (Week 5). */
+  private readonly clientMeta = new Map<WebSocket, ClientMeta>();
+
   join(roomId: string, client: Client): void {
     if (!this.rooms.has(roomId)) {
       this.rooms.set(roomId, new Set());
@@ -62,6 +72,7 @@ export class RoomManager {
     const room = this.rooms.get(client.roomId);
     if (!room) return;
     room.delete(client);
+    this.clientMeta.delete(client.ws);
     if (room.size === 0) {
       this.rooms.delete(client.roomId);
       this.documents.delete(client.roomId);
@@ -74,7 +85,17 @@ export class RoomManager {
     }
   }
 
-  // ── Op count ──────────────────────────────────────────────────────────────
+  // ── Client metadata (Week 5) ───────────────────────────────────────────────
+
+  setClientMeta(ws: WebSocket, meta: ClientMeta): void {
+    this.clientMeta.set(ws, meta);
+  }
+
+  getClientMeta(ws: WebSocket): ClientMeta | undefined {
+    return this.clientMeta.get(ws);
+  }
+
+  // ── Op count ─────────────────────────────────────────────────────────────────
 
   /** Increment the op count for a room and return the new count. */
   incrementOpCount(roomId: string): number {

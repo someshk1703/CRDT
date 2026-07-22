@@ -19,29 +19,26 @@ interface UseCRDTOptions {
   /**
    * Called after each remote op is applied to the document with the diff info.
    * Used by Week 3 presence to reconcile remote cursor positions.
-   *
-   * @param from     Start offset of the changed region
-   * @param removed  Number of characters removed
-   * @param inserted Number of characters inserted
    */
   onRemoteChange?: (from: number, removed: number, inserted: number) => void;
+  /**
+   * Called when the room's active language changes (via 'language' WS message
+   * or from the 'catchup' currentLanguage field).
+   */
+  onLanguageChange?: (lang: string) => void;
 }
 
 interface UseCRDTReturn {
   /** CodeMirror extensions to include when mounting the EditorView. */
   extensions: Extension[];
-  /**
-   * Pass this as `onMessage` to `useWebSocket`.
-   * Applies incoming CRDT ops and updates the editor.
-   */
+  /** Pass this as `onMessage` to `useWebSocket`. */
   applyRemoteOp: (msg: AppMessage | Record<string, unknown>) => void;
   /** Call once after the EditorView is created to register the view reference. */
   setView: (view: EditorView) => void;
-  /**
-   * A stable ref to the send function. Assign `sendRef.current = send` after
-   * useWebSocket provides the real send function each render.
-   */
+  /** Stable ref to the send function. Assign `sendRef.current = send`. */
   sendRef: React.MutableRefObject<(msg: object) => void>;
+  /** Send a language-change message to the room. */
+  sendLanguageChange: (lang: string) => void;
 }
 
 /**
@@ -61,16 +58,32 @@ export function useCRDT(
   const docRef = useRef<RGADocument>(new RGADocument(userId));
   const viewRef = useRef<EditorView | null>(null);
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
   const sendRef = useRef<(msg: object) => void>(() => {});
   const userIdRef = useRef(userId);
   userIdRef.current = userId;
   const roomIdRef = useRef(roomId);
   roomIdRef.current = roomId;
 
-  // Keep onRemoteChange stable via ref to avoid recreating applyRemoteOp
   const onRemoteChangeRef = useRef(options?.onRemoteChange);
   onRemoteChangeRef.current = options?.onRemoteChange;
+
+  // Language callback — may arrive before EditorView mounts; buffer it.
+  const onLanguageChangeRef = useRef(options?.onLanguageChange);
+  onLanguageChangeRef.current = options?.onLanguageChange;
+  const pendingLanguageRef = useRef<string | null>(null);
+
+  const setView = useCallback((view: EditorView) => {
+    viewRef.current = view;
+    // Flush any buffered language change that arrived before mount
+    if (pendingLanguageRef.current !== null) {
+      onLanguageChangeRef.current?.(pendingLanguageRef.current);
+      pendingLanguageRef.current = null;
+    }
+  }, []);
+
+  const sendLanguageChange = useCallback((lang: string) => {
+    sendRef.current({ type: 'language', lang });
+  }, []);
 
   // ── Local change listener ─────────────────────────────────────────────────
 
@@ -150,6 +163,24 @@ export function useCRDT(
         }
         const newText = doc.getText();
         applyTextDiff(view, view.state.doc.toString(), newText);
+        // Apply initial language from catch-up
+        const lang = (catchupMsg as CatchupMessage & { currentLanguage?: string }).currentLanguage;
+        if (lang) {
+          if (viewRef.current) {
+            onLanguageChangeRef.current?.(lang);
+          } else {
+            pendingLanguageRef.current = lang;
+          }
+        }
+      } else if (type === 'language') {
+        const lang = (msg as Record<string, unknown>)['lang'] as string | undefined;
+        if (lang) {
+          if (viewRef.current) {
+            onLanguageChangeRef.current?.(lang);
+          } else {
+            pendingLanguageRef.current = lang;
+          }
+        }
       }
       // Other message types (presence, welcome, user-joined/left) are handled
       // by usePresence — ignored here.
@@ -157,11 +188,7 @@ export function useCRDT(
     [],
   );
 
-  const setView = useCallback((view: EditorView) => {
-    viewRef.current = view;
-  }, []);
-
-  return { extensions: [localChangeExtension], applyRemoteOp, setView, sendRef };
+  return { extensions: [localChangeExtension], applyRemoteOp, setView, sendRef, sendLanguageChange };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
