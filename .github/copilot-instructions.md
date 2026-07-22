@@ -76,3 +76,6 @@ From Constitution:
 ---
 
 <!-- AUTO-UPDATE: Do not manually edit below this line -->
+
+## Recent Changes
+- 002-rga-crdt-core: Added [if applicable, e.g., PostgreSQL 15, MySQL 8, MongoDB or N/A]
