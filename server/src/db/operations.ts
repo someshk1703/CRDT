@@ -155,3 +155,123 @@ export async function maybeSaveSnapshot(
     console.log(`[db] snapshot saved room=${roomId} opCount=${opCount} lastClock=${lastClock}`);
   }
 }
+
+// ─── Week 5: room management helpers ─────────────────────────────────────────
+
+export interface RoomRow {
+  id: string;
+  name: string;
+  language: string;
+  owner_id: string | null;
+  created_at: string;
+}
+
+export interface RecentRoom extends RoomRow {
+  last_visited_at: string;
+}
+
+/** Insert a new room row. Throws on conflict (slug already exists). */
+export async function createRoom(
+  slug: string,
+  name: string,
+  language: string,
+  ownerId: string,
+): Promise<RoomRow> {
+  const { data, error } = await supabase
+    .from('rooms')
+    .insert({ id: slug, name, language, owner_id: ownerId })
+    .select('id, name, language, owner_id, created_at')
+    .single();
+
+  if (error) {
+    console.error(`[db] createRoom failed slug=${slug}:`, error.message);
+    throw error;
+  }
+  return data as RoomRow;
+}
+
+/** Fetch a single room by slug. Returns null if not found. */
+export async function getRoomBySlug(slug: string): Promise<RoomRow | null> {
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('id, name, language, owner_id, created_at')
+    .eq('id', slug)
+    .maybeSingle();
+
+  if (error) {
+    console.error(`[db] getRoomBySlug failed slug=${slug}:`, error.message);
+    throw error;
+  }
+  return data as RoomRow | null;
+}
+
+/** Upsert a room row without throwing if it already exists (used on WS join). */
+export async function upsertRoom(
+  slug: string,
+  ownerId: string,
+  language = 'javascript',
+): Promise<void> {
+  const { error } = await supabase
+    .from('rooms')
+    .upsert(
+      { id: slug, owner_id: ownerId, language },
+      { onConflict: 'id', ignoreDuplicates: true },
+    );
+  if (error) console.error(`[db] upsertRoom failed slug=${slug}:`, error.message);
+}
+
+/** Record or refresh a user's membership in a room. */
+export async function upsertRoomMember(userId: string, roomId: string): Promise<void> {
+  const { error } = await supabase
+    .from('room_members')
+    .upsert(
+      { user_id: userId, room_id: roomId, last_visited_at: new Date().toISOString() },
+      { onConflict: 'user_id,room_id' },
+    );
+  if (error) console.error(`[db] upsertRoomMember failed user=${userId} room=${roomId}:`, error.message);
+}
+
+/** List up to 10 rooms the user has visited, most recent first. */
+export async function getRecentRoomsForUser(userId: string): Promise<RecentRoom[]> {
+  const { data, error } = await supabase
+    .from('room_members')
+    .select('last_visited_at, rooms(id, name, language, owner_id, created_at)')
+    .eq('user_id', userId)
+    .order('last_visited_at', { ascending: false })
+    .limit(10);
+
+  if (error) {
+    console.error(`[db] getRecentRoomsForUser failed user=${userId}:`, error.message);
+    throw error;
+  }
+
+  return (data ?? []).map((row: Record<string, unknown>) => {
+    const room = row['rooms'] as RoomRow;
+    return { ...room, last_visited_at: row['last_visited_at'] as string };
+  });
+}
+
+/** Persist a language change on the room record. */
+export async function updateRoomLanguage(roomId: string, lang: string): Promise<void> {
+  const { error } = await supabase
+    .from('rooms')
+    .update({ language: lang })
+    .eq('id', roomId);
+  if (error) console.error(`[db] updateRoomLanguage failed room=${roomId}:`, error.message);
+}
+
+/** Update a room's name and return the updated row. */
+export async function updateRoomName(roomId: string, name: string): Promise<{ id: string; name: string }> {
+  const { data, error } = await supabase
+    .from('rooms')
+    .update({ name })
+    .eq('id', roomId)
+    .select('id, name')
+    .single();
+  if (error) {
+    console.error(`[db] updateRoomName failed room=${roomId}:`, error.message);
+    throw error;
+  }
+  return data as { id: string; name: string };
+}
+

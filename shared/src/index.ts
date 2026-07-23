@@ -1,6 +1,7 @@
 // Shared message types for client ↔ server communication.
 // Week 1: raw op payloads. Week 2: CRDT insert/delete messages added.
 // Week 3: presence (live cursors), welcome, user-joined/left added.
+// Week 5: auth identity fields, language switching, room-meta broadcast.
 
 export type { CRDTChar } from './crdt.js';
 
@@ -12,7 +13,9 @@ export type MessageType =
   | 'welcome'
   | 'user-joined'
   | 'user-left'
-  | 'catchup';
+  | 'catchup'
+  | 'language'
+  | 'room-meta';
 
 interface BaseMessage {
   type: MessageType;
@@ -40,6 +43,8 @@ export interface PresenceMessage extends BaseMessage {
 export interface UserJoinedMessage extends BaseMessage {
   type: 'user-joined';
   color: string;
+  username: string;   // Week 5: GitHub username
+  avatarUrl: string;  // Week 5: GitHub avatar URL
 }
 
 export interface UserLeftMessage extends BaseMessage {
@@ -48,12 +53,13 @@ export interface UserLeftMessage extends BaseMessage {
 
 /**
  * Sent by the server to the connecting client only (not broadcast to peers).
- * Communicates the server-assigned colour so the client can include it in
- * outgoing presence messages.
+ * Week 5: carries real GitHub identity instead of anonymous UUID.
  */
 export interface WelcomeMessage extends BaseMessage {
   type: 'welcome';
   color: string;
+  username: string;   // GitHub username
+  avatarUrl: string;  // GitHub avatar URL
 }
 
 export interface CRDTInsertMessage extends BaseMessage {
@@ -66,10 +72,22 @@ export interface CRDTDeleteMessage extends BaseMessage {
   charId: string;
 }
 
+export interface LanguageChangeMessage {
+  type: 'language';
+  lang: string;       // One of the 8 supported language IDs
+  changedBy?: string; // userId of the sender (server adds this on broadcast)
+}
+
+export interface RoomMetaMessage {
+  type: 'room-meta';
+  name: string;       // Updated room name
+}
+
 export interface CatchupMessage {
   type: 'catchup';
   roomId: string;
   userId: string;
+  currentLanguage: string;  // Week 5: active language for this room
   snapshot: {
     chars: import('./crdt.js').CRDTChar[];
     lastClock: number;
@@ -89,4 +107,6 @@ export type AppMessage =
   | WelcomeMessage
   | UserJoinedMessage
   | UserLeftMessage
-  | CatchupMessage;
+  | CatchupMessage
+  | LanguageChangeMessage
+  | RoomMetaMessage;
