@@ -42,10 +42,10 @@ CREATE INDEX IF NOT EXISTS snapshots_room_clock_idx
 ALTER TABLE rooms
   ADD COLUMN IF NOT EXISTS name     TEXT NOT NULL DEFAULT 'Untitled Room',
   ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'javascript',
-  ADD COLUMN IF NOT EXISTS owner_id TEXT REFERENCES auth.users(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS room_members (
-  user_id         TEXT        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id         UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   room_id         TEXT        NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
   last_visited_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, room_id)
@@ -58,4 +58,4 @@ ALTER TABLE room_members ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can read own room memberships"
   ON room_members FOR SELECT
-  USING (auth.uid()::text = user_id);
+  USING (auth.uid() = user_id);

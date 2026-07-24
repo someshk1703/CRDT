@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import http from 'http';
 import { randomUUID } from 'crypto';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -20,6 +21,7 @@ import {
   SUPPORTED_LANGUAGES,
   getRoomBySlug,
 } from './rooms.js';
+import { streamExecution } from './executor-client.js';
 
 // ─── Startup env validation (T030) ────────────────────────────────────────────
 
@@ -80,11 +82,22 @@ function startHeartbeat(ws: WebSocket, clientId: string): ReturnType<typeof setI
 
 const ALLOWED_ORIGIN = process.env['ALLOWED_ORIGIN'] ?? 'http://localhost:5173';
 
-function corsHeaders(): Record<string, string> {
+// Accept both localhost and 127.0.0.1 variants for local dev
+const ALLOWED_ORIGINS = new Set([
+  ALLOWED_ORIGIN,
+  ALLOWED_ORIGIN.replace('localhost', '127.0.0.1'),
+  ALLOWED_ORIGIN.replace('127.0.0.1', 'localhost'),
+]);
+
+function corsHeaders(requestOrigin?: string): Record<string, string> {
+  const origin = requestOrigin && ALLOWED_ORIGINS.has(requestOrigin)
+    ? requestOrigin
+    : ALLOWED_ORIGIN;
   return {
-    'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+    'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+    'Vary': 'Origin',
   };
 }
 
@@ -96,13 +109,13 @@ const httpServer = http.createServer((req, res) => {
 
   // CORS preflight
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, corsHeaders());
+    res.writeHead(204, corsHeaders(req.headers['origin']));
     res.end();
     return;
   }
 
   // Attach CORS headers to all responses
-  Object.entries(corsHeaders()).forEach(([k, v]) => res.setHeader(k, v));
+  Object.entries(corsHeaders(req.headers['origin'])).forEach(([k, v]) => res.setHeader(k, v));
 
   if (req.method === 'GET' && path === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -229,6 +242,22 @@ wss.on('connection', (ws: WebSocket, _req: http.IncomingMessage, user: { id: str
     }));
   }
 
+  // Tell the new joiner about every peer already in the room
+  const existingPeers = roomManager.getClients(roomId, client.id);
+  for (const peer of existingPeers) {
+    const peerMeta = roomManager.getClientMeta(peer.ws);
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'user-joined',
+        userId: peer.userId,
+        roomId,
+        color: peer.color,
+        username: peerMeta?.username ?? peer.userId.slice(0, 8),
+        avatarUrl: peerMeta?.avatarUrl ?? '',
+      }));
+    }
+  }
+
   // Tell existing peers about the new arrival (enriched with identity)
   roomManager.broadcast(
     roomId,
@@ -343,6 +372,19 @@ wss.on('connection', (ws: WebSocket, _req: http.IncomingMessage, user: { id: str
       }
     }
 
+    if (msg['type'] === 'crdt-insert-batch') {
+      const chars = msg['chars'];
+      if (!Array.isArray(chars) || chars.length === 0) {
+        console.warn(`[server] ${client.id} crdt-insert-batch missing chars — discarded`);
+        return;
+      }
+      // Limit batch size to prevent abuse (max 10 000 chars per paste)
+      if (chars.length > 10_000) {
+        console.warn(`[server] ${client.id} crdt-insert-batch too large (${chars.length}) — discarded`);
+        return;
+      }
+    }
+
     if (msg['type'] === 'presence') {
       const cursor = msg['cursor'] as Record<string, unknown> | undefined;
       if (
@@ -371,6 +413,46 @@ wss.on('connection', (ws: WebSocket, _req: http.IncomingMessage, user: { id: str
       }
       void updateRoomLanguage(roomId, lang);
       roomManager.broadcast(roomId, { type: 'language', lang, changedBy: client.userId });
+      return;
+    }
+
+    // ── Code execution (Week 6) ──────────────────────────────────────────────
+    if (msg['type'] === 'exec-run') {
+      const lang = msg['language'] as unknown;
+      const code = msg['code'] as unknown;
+
+      if (typeof lang !== 'string' || !SUPPORTED_LANGUAGES.has(lang)) {
+        console.warn(`[server] ${client.id} exec-run invalid language ${String(lang)} — discarded`);
+        return;
+      }
+      if (typeof code !== 'string' || code.trim().length === 0) {
+        console.warn(`[server] ${client.id} exec-run missing code — discarded`);
+        return;
+      }
+      if (Buffer.byteLength(code, 'utf8') > 65_536) {
+        console.warn(`[server] ${client.id} exec-run code too large — discarded`);
+        return;
+      }
+
+      console.log(`[room:${roomId}] exec-run triggered by ${client.id} (lang=${String(lang)})`);
+
+      // Notify all clients that execution has started
+      roomManager.broadcast(roomId, { type: 'exec-start', language: lang });
+
+      streamExecution(
+        lang,
+        code,
+        roomId,
+        (chunk, stream) => {
+          roomManager.broadcast(roomId, { type: 'exec-output', chunk, stream });
+        },
+        (exitCode) => {
+          roomManager.broadcast(roomId, { type: 'exec-done', exitCode });
+        },
+        (reason, message) => {
+          roomManager.broadcast(roomId, { type: 'exec-error', reason, message });
+        },
+      );
       return;
     }
 
@@ -412,6 +494,29 @@ wss.on('connection', (ws: WebSocket, _req: http.IncomingMessage, user: { id: str
         })
         .catch((err: unknown) => {
           console.error(`[room:${roomId}] persistOp failed — not broadcasting:`, (err as Error).message);
+        });
+      return;
+    }
+
+    // ── Batch insert: persist all chars, counted as 1 rate-limit op ─────────
+    if (msg['type'] === 'crdt-insert-batch') {
+      const chars = msg['chars'] as import('@crdt/shared/crdt').CRDTChar[];
+      const serverDoc = roomManager.documents.get(roomId);
+      Promise.all(
+        chars.map((char) =>
+          persistOp(roomId, client.id, { type: 'crdt-insert', userId: client.userId, roomId, char }),
+        ),
+      )
+        .then(() => {
+          if (serverDoc) {
+            for (const char of chars) serverDoc.remoteInsert(char);
+            const count = roomManager.incrementOpCount(roomId);
+            void maybeSaveSnapshot(roomId, serverDoc, count);
+          }
+          roomManager.broadcast(roomId, parsed as object, client.id);
+        })
+        .catch((err: unknown) => {
+          console.error(`[room:${roomId}] crdt-insert-batch persistOp failed:`, (err as Error).message);
         });
       return;
     }

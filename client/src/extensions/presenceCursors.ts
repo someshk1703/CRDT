@@ -62,6 +62,67 @@ export const presenceField = StateField.define<ReadonlyMap<string, PresenceState
   },
 });
 
+// ─── Global style injection (runs once) ──────────────────────────────────────
+
+let styleInjected = false;
+function injectPresenceStyles(): void {
+  if (styleInjected) return;
+  styleInjected = true;
+  const style = document.createElement('style');
+  style.textContent = `
+    /* ── Presence cursors ──────────────────────────────────────────── */
+    .cm-presence-cursor {
+      position: relative;
+      display: inline-block;
+      width: 0;
+      overflow: visible;
+      user-select: none;
+      pointer-events: auto;
+    }
+    .cm-presence-caret {
+      position: absolute;
+      width: 2px;
+      /* Span the full line height: start 2px above baseline, end 2px below */
+      top: -0.1em;
+      bottom: -0.1em;
+      left: -1px;
+      border-radius: 1px;
+    }
+    /* Small diamond flag pinned to the top of the caret */
+    .cm-presence-flag {
+      position: absolute;
+      top: -0.55em;
+      left: -1px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+    }
+    /* Label: hidden by default, fades in on hover */
+    .cm-presence-label {
+      position: absolute;
+      top: -1.75em;
+      left: 6px;
+      color: #fff;
+      font-size: 0.68em;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      padding: 2px 6px;
+      border-radius: 3px;
+      white-space: nowrap;
+      user-select: none;
+      pointer-events: none;
+      line-height: 1.5;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      z-index: 10;
+    }
+    .cm-presence-cursor:hover .cm-presence-label {
+      opacity: 1;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 // ─── Cursor widget ────────────────────────────────────────────────────────────
 
 class CursorWidget extends WidgetType {
@@ -74,39 +135,28 @@ class CursorWidget extends WidgetType {
   }
 
   toDOM(): HTMLElement {
+    injectPresenceStyles();
+
     const wrapper = document.createElement('span');
+    wrapper.className = 'cm-presence-cursor';
     wrapper.setAttribute('data-presence-user', this.userId);
-    wrapper.style.cssText =
-      'position: relative; display: inline-block; width: 0; overflow: visible; pointer-events: none; user-select: none;';
+    wrapper.title = this.name; // native tooltip as fallback
 
     const caret = document.createElement('span');
-    caret.style.cssText = [
-      'position: absolute',
-      `border-left: 2px solid ${this.color}`,
-      'height: 1.15em',
-      'top: 0',
-      'left: -1px',
-    ].join(';');
+    caret.className = 'cm-presence-caret';
+    caret.style.background = this.color;
+
+    const flag = document.createElement('span');
+    flag.className = 'cm-presence-flag';
+    flag.style.background = this.color;
 
     const label = document.createElement('span');
+    label.className = 'cm-presence-label';
     label.textContent = this.name;
-    label.style.cssText = [
-      'position: absolute',
-      'top: -1.5em',
-      'left: -1px',
-      `background: ${this.color}`,
-      'color: #fff',
-      'font-size: 0.68em',
-      'font-family: ui-sans-serif, system-ui, sans-serif',
-      'padding: 1px 5px',
-      'border-radius: 3px 3px 3px 0',
-      'white-space: nowrap',
-      'user-select: none',
-      'pointer-events: none',
-      'line-height: 1.4',
-    ].join(';');
+    label.style.background = this.color;
 
     wrapper.appendChild(caret);
+    wrapper.appendChild(flag);
     wrapper.appendChild(label);
     return wrapper;
   }
@@ -120,7 +170,7 @@ class CursorWidget extends WidgetType {
   }
 
   ignoreEvent(): boolean {
-    return true;
+    return false; // allow pointer events so hover works
   }
 }
 

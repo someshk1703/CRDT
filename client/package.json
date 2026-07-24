@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@babel/runtime": "^8.0.0",
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-go": "^6.0.1",
     "@codemirror/lang-html": "^6.4.11",
@@ -16,7 +17,12 @@
     "@codemirror/lang-javascript": "^6.2.2",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-python": "^6.2.1",
+    "@replit/codemirror-minimap": "^0.5.2",
     "@supabase/supabase-js": "^2.110.8",
+    "@uiw/codemirror-theme-github": "^4.25.11",
+    "@uiw/codemirror-theme-solarized": "^4.25.11",
+    "@uiw/codemirror-theme-tokyo-night": "^4.25.11",
+    "@uiw/codemirror-themes": "^4.25.11",
     "codemirror": "^6.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

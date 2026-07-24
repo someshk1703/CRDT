@@ -160,6 +160,16 @@ export class RoomManager {
     return COLORS[this.colorIndex++ % COLORS.length];
   }
 
+  /**
+   * Return all clients in a room, optionally excluding one by connection ID.
+   * Used to inform a new joiner about existing peers.
+   */
+  getClients(roomId: string, excludeId?: string): Client[] {
+    const room = this.rooms.get(roomId);
+    if (!room) return [];
+    return [...room].filter((c) => c.id !== excludeId);
+  }
+
   getRoomCount(): number {
     return this.rooms.size;
   }

@@ -8,7 +8,49 @@ import { usePresence } from '../hooks/usePresence';
 import { useSession } from '../hooks/useSession';
 import { getRoom, renameRoom, type RoomInfo } from '../hooks/useRooms';
 import { getLanguageExtension } from '../extensions/languageSwitcher';
+import { getThemeExtension, DEFAULT_THEME } from '../extensions/themeSwitcher';
+import { showMinimap } from '@replit/codemirror-minimap';
 import { Toolbar } from '../components/Toolbar';
+import { OutputPanel, type OutputLine } from '../components/OutputPanel';
+
+// Inject editor-level global styles once (scrollbar + minimap)
+(function injectEditorGlobalStyles() {
+  if (document.getElementById('crdt-editor-styles')) return;
+  const s = document.createElement('style');
+  s.id = 'crdt-editor-styles';
+  s.textContent = `
+    /* Slim VS Code-style scrollbar (visible only when minimap is off) */
+    .cm-scroller {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(180,180,180,0.18) transparent;
+    }
+    .cm-scroller::-webkit-scrollbar { width: 6px; height: 6px; }
+    .cm-scroller::-webkit-scrollbar-track { background: transparent; }
+    .cm-scroller::-webkit-scrollbar-thumb {
+      background: rgba(180,180,180,0.18);
+      border-radius: 3px;
+    }
+    .cm-scroller::-webkit-scrollbar-thumb:hover {
+      background: rgba(180,180,180,0.38);
+    }
+    .cm-scroller::-webkit-scrollbar-corner { background: transparent; }
+
+    /* ── Minimap VS Code styling ─────────────────────────────────── */
+    .cm-minimap-wrap {
+      border-left: 1px solid rgba(255,255,255,0.06) !important;
+    }
+    .cm-minimap-gutter {
+      background: transparent !important;
+    }
+    /* Thinner minimap — override default 120px max-width */
+    .cm-minimap-inner,
+    .cm-minimap-inner canvas {
+      max-width: 60px !important;
+      width: 60px !important;
+    }
+  `;
+  document.head.appendChild(s);
+})();
 
 const WS_BASE = (import.meta.env.VITE_WS_URL as string | undefined) ?? 'ws://localhost:3001';
 
@@ -23,7 +65,23 @@ export function Room() {
   const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
   const [roomNotFound, setRoomNotFound] = useState(false);
   const [language, setLanguage] = useState('javascript');
+  const [theme, setTheme] = useState(DEFAULT_THEME);
+
+  // ── Execution state (Week 6) ──────────────────────────────────────────────
+  const [outputLines, setOutputLines] = useState<OutputLine[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const outputLineId = useRef(0);
   const languageCompartment = useRef(new Compartment()).current;
+  const themeCompartment = useRef(new Compartment()).current;
+
+  // Minimap extension — computed once, stable reference
+  const minimapExtension = useRef(
+    showMinimap.compute(['doc'], () => ({
+      create: () => { const dom = document.createElement('div'); return { dom }; },
+      displayText: 'blocks' as const,
+      showOverlay: 'mouse-over' as const,
+    }))
+  ).current;
 
   // WS URL includes auth token
   const wsUrl = roomId && session
@@ -73,11 +131,51 @@ export function Room() {
     (msg: Parameters<typeof applyRemoteOp>[0]) => {
       applyRemoteOp(msg);
       handlePresenceMessage(msg);
+
+      const raw = msg as Record<string, unknown>;
+      const type = raw['type'];
+
       // room-meta: update room name
-      const type = (msg as Record<string, unknown>)['type'];
       if (type === 'room-meta') {
-        const name = (msg as Record<string, unknown>)['name'] as string;
+        const name = raw['name'] as string;
         if (name) setRoomInfo((prev) => prev ? { ...prev, name } : prev);
+      }
+
+      // ── Execution messages (Week 6) ──────────────────────────────────────
+      if (type === 'exec-start') {
+        setIsRunning(true);
+        setOutputLines([]);
+      }
+
+      if (type === 'exec-output') {
+        const chunk = (raw['chunk'] as string) ?? '';
+        const stream = (raw['stream'] === 'stderr' ? 'stderr' : 'stdout') as OutputLine['stream'];
+        setOutputLines((prev) => [
+          ...prev,
+          { id: ++outputLineId.current, text: chunk, stream },
+        ]);
+      }
+
+      if (type === 'exec-done') {
+        const exitCode = (raw['exitCode'] as number) ?? 0;
+        setIsRunning(false);
+        setOutputLines((prev) => [
+          ...prev,
+          {
+            id: ++outputLineId.current,
+            text: `\nProcess exited with code ${exitCode}`,
+            stream: 'system',
+          },
+        ]);
+      }
+
+      if (type === 'exec-error') {
+        const message = (raw['message'] as string) ?? 'Unknown error';
+        setIsRunning(false);
+        setOutputLines((prev) => [
+          ...prev,
+          { id: ++outputLineId.current, text: `\nError: ${message}`, stream: 'stderr' },
+        ]);
       }
     },
     [applyRemoteOp, handlePresenceMessage],
@@ -130,6 +228,8 @@ export function Room() {
       extensions: [
         basicSetup,
         languageCompartment.of(getLanguageExtension(language)),
+        themeCompartment.of(getThemeExtension(theme)),
+        minimapExtension,
         ...crdtExtensions,
         presenceExtensions,
         selectionListenerExtension,
@@ -147,7 +247,7 @@ export function Room() {
       editorMountedRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authLoading]);
 
   // Update language compartment when language state changes after mount
   useEffect(() => {
@@ -157,6 +257,15 @@ export function Room() {
       });
     }
   }, [language, languageCompartment]);
+
+  // Update theme compartment when theme state changes
+  useEffect(() => {
+    if (viewRef.current) {
+      viewRef.current.dispatch({
+        effects: themeCompartment.reconfigure(getThemeExtension(theme)),
+      });
+    }
+  }, [theme, themeCompartment]);
 
   // ── Auth guard ────────────────────────────────────────────────────────────
 
@@ -189,6 +298,8 @@ export function Room() {
         roomName={roomInfo?.name ?? roomId}
         roomSlug={roomId}
         language={language}
+        theme={theme}
+        onThemeChange={setTheme}
         onLanguageChange={(lang) => {
           setLanguage(lang);
           sendLanguageChange(lang);
@@ -199,10 +310,20 @@ export function Room() {
           }).catch(console.error);
         }}
         connectedUsers={connectedUsers}
+        isRunning={isRunning}
+        onRun={() => {
+          const code = viewRef.current?.state.doc.toString() ?? '';
+          send({ type: 'exec-run', roomId, language, code });
+        }}
       />
       <div
         ref={editorContainerRef}
-        style={{ flex: 1, overflow: 'auto', fontSize: '14px' }}
+        style={{ flex: 1, overflow: 'auto', fontSize: '14px', minHeight: 0 }}
+      />
+      <OutputPanel
+        lines={outputLines}
+        isRunning={isRunning}
+        onClear={() => setOutputLines([])}
       />
       {status === 'error' && (
         <div style={{ padding: '0.4rem 1rem', background: '#f38ba8', color: '#1e1e2e', fontSize: '0.8rem' }}>

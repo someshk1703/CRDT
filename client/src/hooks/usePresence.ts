@@ -118,6 +118,15 @@ export function usePresence({
           const withoutSelf = prev.filter((u) => u.userId !== userId);
           return [{ userId, username: selfRef.current.username, avatarUrl: selfRef.current.avatarUrl, color: colorRef.current }, ...withoutSelf];
         });
+        // Clear ALL stale presence cursors from previous connections.
+        // A welcome means we have a fresh WS session — old cursors are invalid.
+        const view = viewRef.current;
+        if (view) {
+          for (const staleUserId of presenceMapRef.current.keys()) {
+            view.dispatch({ effects: updatePresenceEffect.of({ userId: staleUserId, state: null }) });
+          }
+        }
+        presenceMapRef.current.clear();
         return;
       }
 
@@ -191,7 +200,7 @@ export function usePresence({
           userId,
           roomId,
           cursor: pending,
-          name: `User-${userId.slice(0, 4).toUpperCase()}`,
+          name: selfRef.current.username || `User-${userId.slice(0, 4).toUpperCase()}`,
           color: colorRef.current,
         });
       }, debounceMs);

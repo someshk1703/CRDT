@@ -5,12 +5,15 @@
   "workspaces": [
     "client",
     "server",
-    "shared"
+    "shared",
+    "executor"
   ],
   "scripts": {
     "dev:client": "npm run dev -w client",
     "dev:server": "npm run dev -w server",
-    "test": "npm run test -w shared"
+    "dev:executor": "npm run dev -w executor",
+    "test": "npm run test -w shared",
+    "test:executor": "npm run test -w executor"
   },
   "engines": {
     "node": ">=20"

@@ -8,6 +8,7 @@ export type { CRDTChar } from './crdt.js';
 export type MessageType =
   | 'op'
   | 'crdt-insert'
+  | 'crdt-insert-batch'
   | 'crdt-delete'
   | 'presence'
   | 'welcome'
@@ -67,6 +68,12 @@ export interface CRDTInsertMessage extends BaseMessage {
   char: import('./crdt.js').CRDTChar;
 }
 
+/** Batch insert — all chars from a single paste/transaction. Counted as 1 rate-limit op. */
+export interface CRDTInsertBatchMessage extends BaseMessage {
+  type: 'crdt-insert-batch';
+  chars: import('./crdt.js').CRDTChar[];
+}
+
 export interface CRDTDeleteMessage extends BaseMessage {
   type: 'crdt-delete';
   charId: string;
@@ -102,6 +109,7 @@ export interface CatchupMessage {
 export type AppMessage =
   | OpMessage
   | CRDTInsertMessage
+  | CRDTInsertBatchMessage
   | CRDTDeleteMessage
   | PresenceMessage
   | WelcomeMessage
