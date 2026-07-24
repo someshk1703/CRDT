@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { SUPPORTED_LANGUAGES } from '../extensions/languageSwitcher';
+import { THEMES } from '../extensions/themeSwitcher';
 
 interface ConnectedUser {
   userId: string;
@@ -15,6 +16,10 @@ interface ToolbarProps {
   onLanguageChange: (lang: string) => void;
   onRoomNameChange?: (name: string) => void;
   connectedUsers: ConnectedUser[];
+  theme: string;
+  onThemeChange: (themeId: string) => void;
+  onRun?: () => void;
+  isRunning?: boolean;
 }
 
 const MAX_VISIBLE_AVATARS = 5;
@@ -58,9 +63,16 @@ const s: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     whiteSpace: 'nowrap' as const,
   },
-  btnDisabled: {
-    opacity: 0.4,
-    cursor: 'not-allowed',
+  btnRun: {
+    padding: '0.3rem 0.75rem',
+    borderRadius: '6px',
+    border: '1px solid #a6e3a1',
+    background: '#1e1e2e',
+    color: '#a6e3a1',
+    fontSize: '0.85rem',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+    fontWeight: 600,
   },
   avatarStack: {
     display: 'flex',
@@ -126,7 +138,21 @@ export function Toolbar({
   onLanguageChange,
   onRoomNameChange,
   connectedUsers,
+  theme,
+  onThemeChange,
+  onRun,
+  isRunning = false,
 }: ToolbarProps) {
+  // Group themes by their group label
+  const themeGroups = Object.entries(THEMES).reduce<Record<string, Array<[string, (typeof THEMES)[string]]>>>(
+    (acc, entry) => {
+      const group = entry[1].group;
+      if (!acc[group]) acc[group] = [];
+      acc[group].push(entry);
+      return acc;
+    },
+    {},
+  );
   const [copyFallback, setCopyFallback] = useState(false);
 
   const roomUrl = `${window.location.origin}/room/${roomSlug}`;
@@ -171,6 +197,22 @@ export function Toolbar({
         ))}
       </select>
 
+      {/* Theme dropdown */}
+      <select
+        style={s.select}
+        value={theme}
+        onChange={(e) => onThemeChange(e.target.value)}
+        title="Editor theme"
+      >
+        {Object.entries(themeGroups).map(([group, entries]) => (
+          <optgroup key={group} label={group}>
+            {entries.map(([id, { label }]) => (
+              <option key={id} value={id}>{label}</option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+
       {/* Copy link */}
       {copyFallback ? (
         <input style={s.fallbackInput} readOnly value={roomUrl} onClick={(e) => e.currentTarget.select()} />
@@ -180,9 +222,18 @@ export function Toolbar({
         </button>
       )}
 
-      {/* Stubbed Run button */}
-      <button style={{ ...s.btn, ...s.btnDisabled }} disabled title="Code execution — coming soon">
-        ▶ Run
+      {/* Run button */}
+      <button
+        style={
+          onRun && !isRunning
+            ? s.btnRun
+            : { ...s.btn, opacity: 0.4, cursor: 'not-allowed' }
+        }
+        disabled={!onRun || isRunning}
+        onClick={onRun}
+        title={isRunning ? 'Running…' : 'Run code (Ctrl+Enter)'}
+      >
+        {isRunning ? '⏳ Running…' : '▶ Run'}
       </button>
 
       {/* Avatar stack + user count */}

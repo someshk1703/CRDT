@@ -82,12 +82,12 @@ without coordination, and the algorithm is substantially easier to reason about 
 
 | Week | Focus | Status |
 |------|-------|--------|
-| 1 | Foundation — monorepo, CodeMirror 6, WebSocket skeleton | 🔄 In progress |
-| 2 | CRDT — RGA algorithm, concurrent edits, convergence | ⏳ Pending |
-| 3 | Presence — live cursors, user awareness, colour assignment | ⏳ Pending |
-| 4 | Persistence — Supabase event log, snapshots, catch-up | ⏳ Pending |
-| 5 | Auth, rooms, polished UX, deployment | ⏳ Pending |
-| 6 | Bonus — sandboxed code execution (Docker) | ⏳ Pending |
+| 1 | Foundation — monorepo, CodeMirror 6, WebSocket skeleton | ✅ Done |
+| 2 | CRDT — RGA algorithm, concurrent edits, convergence | ✅ Done |
+| 3 | Presence — live cursors, user awareness, colour assignment | ✅ Done |
+| 4 | Persistence — Supabase event log, snapshots, catch-up | ✅ Done |
+| 5 | Auth, rooms, polished UX, deployment | ✅ Done |
+| 6 | Bonus — sandboxed code execution (Docker) | ✅ Done |
 
 ---
 
@@ -101,8 +101,9 @@ without coordination, and the algorithm is substantially easier to reason about 
 | Transport | WebSocket (`ws` library, Node.js) |
 | Database | Supabase (PostgreSQL + Realtime) |
 | Auth | Supabase Auth (GitHub OAuth) |
+| Execution | Docker sandbox (Node 20 · Python 3.12 · Java 17) |
 | Testing | Vitest (unit + convergence) · Playwright (E2E multi-tab) |
-| Deployment | Vercel (client) · Railway (server) |
+| Deployment | Vercel (client) · Railway (server + executor) |
 
 ---
 
@@ -120,10 +121,16 @@ CRDT/
 │   │   └── pages/
 │   │       └── Room.tsx            # /room/:roomId page
 │   └── package.json
+├── executor/               # Code execution microservice (Week 6)
+│   ├── src/
+│   │   ├── index.ts                # Express HTTP server, POST /execute
+│   │   ├── docker-runner.ts        # Spawns Docker containers per request
+│   │   └── languages.ts            # Language config (image, limits)
+│   └── Dockerfile
 ├── server/                 # Node.js WebSocket server
 │   ├── src/
 │   │   ├── room-manager.ts         # Map<roomId, Set<Client>>, broadcast()
-│   │   ├── persistence.ts          # Supabase op storage + catch-up (Week 4)
+│   │   ├── executor-client.ts      # HTTP client for executor service (Week 6)
 │   │   └── index.ts                # Server entry point, /health endpoint
 │   └── package.json
 ├── shared/                 # Pure TypeScript — no framework deps
@@ -134,8 +141,11 @@ CRDT/
 │   │       └── crdt.convergence.test.ts # Fuzz: random ops → same toString()
 │   └── package.json
 ├── specs/                  # Feature specifications (one folder per week)
-│   └── 001-week1-foundation/
-│       └── spec.md
+│   └── 006-week6-code-execution-sandbox/
+│       ├── spec.md
+│       ├── plan.md
+│       └── tasks.md
+├── docker-compose.yml      # Full-stack local dev (server + executor + client)
 ├── plan/                   # Overall design docs and audit
 │   └── overallPlan/
 │       ├── collab_editor_spec.html
@@ -144,6 +154,59 @@ CRDT/
 ├── .env.example            # Required environment variables (no secrets)
 └── README.md
 ```
+
+---
+
+## Week 6 — Code Execution Sandbox
+
+### How It Works
+
+Clicking **▶ Run** sends an `exec-run` WebSocket message to the collaboration server. The server
+forwards `{language, code}` to a physically separate **Executor microservice** over HTTP. The
+executor spawns a locked-down Docker container per request, streams stdout/stderr back through the
+HTTP response, and the server broadcasts each chunk to every client in the room as `exec-output`.
+
+**Security guarantees**:
+- `--network=none` — no outbound internet access from inside the sandbox
+- `--memory=64m` — OOM-kill if code tries to exhaust memory
+- `--cpus=0.5` — CPU-limited; still plenty for demo code
+- `--read-only` filesystem — container cannot persist anything
+- `--user=nobody` — no root-level operations possible
+- 10-second hard timeout — `SIGKILL` on infinite loops
+- Physically separate microservice — a container escape or crash cannot affect collaboration
+
+**Languages**: JavaScript (Node 20), Python 3.12, Java 17 (with compile → run flow).
+
+### Running the Executor Locally
+
+```bash
+# 1. Pre-pull the sandbox images (do this once to avoid cold-start delays)
+docker pull node:20-alpine
+docker pull python:3.12-slim
+docker pull openjdk:17-alpine
+
+# 2. Start the executor
+npm run dev:executor    # Starts on port 3002
+
+# 3. Test it manually
+curl -N -X POST http://localhost:3002/execute \
+  -H 'Content-Type: application/json' \
+  -d '{"language":"javascript","code":"console.log(\"hello world\")"}'
+```
+
+### Running with Docker Compose
+
+```bash
+# Requires: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your env
+docker compose up --build
+```
+
+### Java Convention
+
+Java code must define `public class Main` with `public static void main(String[] args)`.
+This convention is shown in a placeholder comment when a Java room is created.
+
+---
 
 ---
 
@@ -223,3 +286,13 @@ Vercel runs serverless functions — they execute per-request and are torn down 
 WebSocket connections are stateful and long-lived. `RoomManager` holds `Map<roomId, Set<Client>>`
 in memory; that state would vanish between invocations. Railway (and Render) support persistent
 Node.js processes, which is what WebSocket servers require.
+
+> "How would you securely execute untrusted code?"
+
+Run it in a Docker container, never in the main server process. The container gets:
+`--network=none` (no internet), `--memory=64m` (OOM-kill on abuse), `--cpus=0.5`, `--read-only`
+filesystem, `--user=nobody` (no root ops), and a 10-second SIGKILL timeout. The executor
+microservice is physically separate from the WebSocket server so a sandbox escape or resource
+exhaustion cannot cascade to the collaboration layer. The server passes only `{language, code}` —
+no user identity, no room state — minimising the attack surface. This is the architecture used by
+production online judges (LeetCode, HackerRank) and REPL services.

@@ -98,9 +98,21 @@ export function useCRDT(
     update.transactions.forEach((tr) => {
       if (tr.annotation(remoteAnnotation)) return;
 
+      // offset tracks net visible-length change from prior change segments
+      // within this transaction so later segments use correct CRDT positions.
+      let offset = 0;
+
+      // Collect all inserts across the whole transaction first, then send as
+      // one batch message. This prevents the server rate-limiter from dropping
+      // characters when the user pastes large blocks of code.
+      const batchInserts: import('@crdt/shared/crdt').CRDTChar[] = [];
+
       tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
-        // 1. Process deletions first (positions reference the pre-change document)
-        for (let i = toA - 1; i >= fromA; i--) {
+        const adjFrom = fromA + offset;
+        const adjTo   = toA   + offset;
+
+        // 1. Process deletions first (back-to-front to preserve positions)
+        for (let i = adjTo - 1; i >= adjFrom; i--) {
           try {
             const deleted = doc.localDelete(i);
             send({ type: 'crdt-delete' as const, userId, roomId, charId: deleted.id });
@@ -108,16 +120,26 @@ export function useCRDT(
             console.warn('[useCRDT] localDelete out of range at', i);
           }
         }
+        offset -= (adjTo - adjFrom);
 
-        // 2. Process insertions
+        // 2. Collect insertions into batch
         const insertedStr = inserted.toString();
-        let insertPos = fromA;
+        let insertPos = adjFrom;
         for (const char of insertedStr) {
           const crdt = doc.localInsert(insertPos, char, userId);
-          send({ type: 'crdt-insert' as const, userId, roomId, char: crdt });
+          batchInserts.push(crdt);
           insertPos++;
         }
+        offset += insertedStr.length;
       });
+
+      // Send inserts: single char → crdt-insert (backward compat),
+      // multiple chars (paste) → crdt-insert-batch (1 rate-limit op).
+      if (batchInserts.length === 1) {
+        send({ type: 'crdt-insert' as const, userId, roomId, char: batchInserts[0] });
+      } else if (batchInserts.length > 1) {
+        send({ type: 'crdt-insert-batch' as const, userId, roomId, chars: batchInserts });
+      }
     });
   });
 
@@ -135,6 +157,17 @@ export function useCRDT(
         const insertMsg = msg as CRDTInsertMessage;
         const prevText = doc.getText();
         doc.remoteInsert(insertMsg.char);
+        const newText = doc.getText();
+        const diff = applyTextDiff(view, prevText, newText);
+        if (diff) {
+          onRemoteChangeRef.current?.(diff.from, diff.removed, diff.inserted);
+        }
+      } else if (type === 'crdt-insert-batch') {
+        const batchMsg = msg as import('@crdt/shared').CRDTInsertBatchMessage;
+        let prevText = doc.getText();
+        for (const char of batchMsg.chars) {
+          doc.remoteInsert(char);
+        }
         const newText = doc.getText();
         const diff = applyTextDiff(view, prevText, newText);
         if (diff) {
