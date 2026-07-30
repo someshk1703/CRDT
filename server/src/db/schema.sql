@@ -59,3 +59,21 @@ ALTER TABLE room_members ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can read own room memberships"
   ON room_members FOR SELECT
   USING (auth.uid() = user_id);
+
+-- ─── Vercel serverless migration ─────────────────────────────────────────────
+-- Backs client/api/execute.ts: global (first-come-first-served) 50/day Judge0
+-- quota tracking, plus a short-TTL cache so repeated identical runs don't burn it.
+
+CREATE TABLE IF NOT EXISTS executions (
+  id         BIGSERIAL   PRIMARY KEY,
+  user_id    UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS executions_created_at_idx ON executions (created_at);
+
+CREATE TABLE IF NOT EXISTS execution_cache (
+  hash       TEXT        PRIMARY KEY,  -- sha256(language + ':' + source_code)
+  result     JSONB       NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { LANGUAGES, MAX_CODE_BYTES, MAX_OUTPUT_BYTES } from "./languages.js";
 
 describe("Language config", () => {
@@ -8,12 +8,10 @@ describe("Language config", () => {
     expect(LANGUAGES).toHaveProperty("java");
   });
 
-  it("marks java as twoStep", () => {
-    expect(LANGUAGES.java.twoStep).toBe(true);
-  });
-
-  it("does not mark javascript as twoStep", () => {
-    expect(LANGUAGES.javascript.twoStep).toBeUndefined();
+  it("assigns a Judge0 language_id to each language", () => {
+    expect(LANGUAGES.javascript.judge0Id).toBe(63);
+    expect(LANGUAGES.python.judge0Id).toBe(71);
+    expect(LANGUAGES.java.judge0Id).toBe(62);
   });
 });
 

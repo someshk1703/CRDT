@@ -1,0 +1,18 @@
+$schema = "https://railway.com/railway.schema.json"
+
+# Unlike server/client, the executor has no dependency on the shared workspace
+# package, so set this service's Root Directory to "executor" (not blank) in
+# the dashboard, and point "Config File Path" to /executor/railway.toml.
+#
+# Required service variables: JUDGE0_API_KEY (RapidAPI key for Judge0 CE).
+# Optional: JUDGE0_API_URL, JUDGE0_API_HOST (only if using a different Judge0 host).
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+watchPatterns = ["**"]
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

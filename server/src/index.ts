@@ -82,15 +82,19 @@ function startHeartbeat(ws: WebSocket, clientId: string): ReturnType<typeof setI
 
 const ALLOWED_ORIGIN = process.env['ALLOWED_ORIGIN'] ?? 'http://localhost:5173';
 
-// Accept both localhost and 127.0.0.1 variants for local dev
-const ALLOWED_ORIGINS = new Set([
-  ALLOWED_ORIGIN,
-  ALLOWED_ORIGIN.replace('localhost', '127.0.0.1'),
-  ALLOWED_ORIGIN.replace('127.0.0.1', 'localhost'),
-]);
+// In local dev (localhost origin), accept any localhost port so Vite's port
+// auto-increment (5173, 5174, …) never causes a CORS failure.
+const IS_LOCALHOST_ORIGIN = ALLOWED_ORIGIN.includes('localhost') || ALLOWED_ORIGIN.includes('127.0.0.1');
+
+function isAllowedOrigin(requestOrigin: string): boolean {
+  if (IS_LOCALHOST_ORIGIN) {
+    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(requestOrigin);
+  }
+  return requestOrigin === ALLOWED_ORIGIN;
+}
 
 function corsHeaders(requestOrigin?: string): Record<string, string> {
-  const origin = requestOrigin && ALLOWED_ORIGINS.has(requestOrigin)
+  const origin = requestOrigin && isAllowedOrigin(requestOrigin)
     ? requestOrigin
     : ALLOWED_ORIGIN;
   return {

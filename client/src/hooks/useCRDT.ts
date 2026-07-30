@@ -39,6 +39,8 @@ interface UseCRDTReturn {
   sendRef: React.MutableRefObject<(msg: object) => void>;
   /** Send a language-change message to the room. */
   sendLanguageChange: (lang: string) => void;
+  /** Full CRDT chars array (including tombstones) — used for debounced snapshot persistence. */
+  getChars: () => import('@crdt/shared/crdt').CRDTChar[];
 }
 
 /**
@@ -221,7 +223,9 @@ export function useCRDT(
     [],
   );
 
-  return { extensions: [localChangeExtension], applyRemoteOp, setView, sendRef, sendLanguageChange };
+  const getChars = useCallback(() => docRef.current.getChars(), []);
+
+  return { extensions: [localChangeExtension], applyRemoteOp, setView, sendRef, sendLanguageChange, getChars };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

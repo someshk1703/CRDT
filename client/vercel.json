@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/execute.ts": {
+      "maxDuration": 20
+    },
+    "api/rooms/index.ts": {
+      "maxDuration": 10
+    },
+    "api/rooms/[slug].ts": {
+      "maxDuration": 10
+    },
+    "api/catchup.ts": {
+      "maxDuration": 10
+    },
+    "api/snapshot.ts": {
+      "maxDuration": 10
+    }
+  },
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
+}

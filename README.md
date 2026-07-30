@@ -36,47 +36,66 @@ without coordination, and the algorithm is substantially easier to reason about 
 
 ---
 
-## Architecture
+## Architecture (Vercel + Supabase Realtime)
+
+Serverless functions on Vercel are short-lived, so a persistent `y-websocket`-style
+server can't run there. Sync transport is split from backend logic instead:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  Browser (Tab A)                    Browser (Tab B)             │
 │  ┌──────────────────┐               ┌──────────────────┐        │
 │  │  CodeMirror 6    │               │  CodeMirror 6    │        │
-│  │  EditorView      │               │  EditorView      │        │
-│  │  Transaction ────┼──► CRDT op   │  CRDT op ────────┼──►     │
 │  │  RGADocument     │               │  RGADocument     │        │
 │  └──────┬───────────┘               └──────────┬───────┘        │
-│         │  useWebSocket hook                    │                │
+│         │  useRealtimeChannel hook              │                │
 └─────────┼────────────────────────────────────────────────────────┘
-          │  WebSocket (wss://)                  │
+          │  Supabase Realtime channel (broadcast + presence)     │
           ▼                                      ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  Node.js WebSocket Server                                        │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  RoomManager: Map<roomId, Set<Client>>                   │   │
-│  │  broadcast(roomId, msg, excludeSender)                   │   │
-│  │  Heartbeat: ping/pong every 30s                          │   │
-│  │  Rate limiting: sliding window per clientId              │   │
-│  └───────────────────────┬──────────────────────────────────┘   │
-└──────────────────────────┼───────────────────────────────────────┘
-                           │  Supabase client (Week 4+)
+│  Supabase Realtime (hosted pub/sub — no server process to run)   │
+│  broadcast: crdt ops, presence, language change, exec-*          │
+│  presence: online users → welcome / user-joined / user-left      │
+└──────────────────────────┬─────────────────────────────────────────┘
+                           │
+          ┌────────────────┴─────────────────┐
+          │  Vercel serverless functions (client/api/*)          │
+          │  /api/rooms     — create / list / rename rooms       │
+          │  /api/catchup   — latest snapshot for late joiners    │
+          │  /api/snapshot  — debounced full-doc persistence      │
+          │  /api/execute   — Judge0 proxy, 50/day global quota   │
+          └────────────────┬─────────────────┘
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  Supabase (PostgreSQL)                                          │
-│  ┌──────────────┐  ┌────────────────────┐  ┌────────────────┐  │
-│  │   rooms      │  │    operations      │  │   snapshots    │  │
-│  │ (id, name)   │  │ (append-only log)  │  │ (every 100 ops)│  │
-│  └──────────────┘  └────────────────────┘  └────────────────┘  │
+│  rooms · room_members · snapshots · executions · execution_cache│
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Deployment** (Week 5+):
-- Frontend → **Vercel** (static + CDN)
-- WebSocket server → **Railway** (persistent WebSocket connections; Vercel serverless does not support them)
+- CRDT ops, presence cursors, language changes, and exec output all ride the
+  Supabase Realtime `broadcast` channel — ephemeral, no history retained.
+- On join, the client fetches the last persisted snapshot from `/api/catchup`
+  and applies it *before* subscribing to broadcast, so reloads and late
+  joiners stay consistent even though broadcast itself carries no history.
+- Every ~7s of editor inactivity, the client POSTs the full CRDT state to
+  `/api/snapshot` (debounced, not per-keystroke).
+- `/api/execute` is the only piece that needs a real "server": it hides the
+  RapidAPI key and enforces a shared 50/day execution quota before proxying
+  to Judge0 CE.
+
+**Deployment**:
+- Frontend + `/api/*` routes → **Vercel** (one project — static build + serverless functions)
+- CRDT sync + presence → **Supabase Realtime** (hosted pub/sub, no server to run/scale)
 - Database + Auth → **Supabase**
 
+> The original Week 1–6 build used a persistent `ws` WebSocket server on
+> Railway (`server/`, `executor/`). That implementation still works for local
+> Docker-based dev (`docker-compose.yml`) and is kept in the repo as a
+> reference/fallback, but the Vercel + Supabase Realtime path above (`client/api/`)
+> is the deployed architecture going forward.
+
 ---
+
 
 ## 6-Week Build Plan
 
@@ -98,12 +117,13 @@ without coordination, and the algorithm is substantially easier to reason about 
 | Frontend | React 18 · Vite · TypeScript (strict) |
 | Editor | CodeMirror 6 (`@codemirror/view`, `@codemirror/state`) |
 | CRDT | Hand-rolled RGA in `/shared/src/crdt.ts` |
-| Transport | WebSocket (`ws` library, Node.js) |
+| Transport | Supabase Realtime (broadcast + presence) — replaces the legacy `ws` server |
+| API | Vercel serverless functions (`client/api/*`) |
 | Database | Supabase (PostgreSQL + Realtime) |
 | Auth | Supabase Auth (GitHub OAuth) |
-| Execution | Docker sandbox (Node 20 · Python 3.12 · Java 17) |
+| Execution | Judge0 CE via RapidAPI, proxied through `/api/execute` (50/day global quota) |
 | Testing | Vitest (unit + convergence) · Playwright (E2E multi-tab) |
-| Deployment | Vercel (client) · Railway (server + executor) |
+| Deployment | Vercel (client + `/api/*`, one project) — Railway (`server/`, `executor/`) kept for local Docker dev only |
 
 ---
 
@@ -112,22 +132,29 @@ without coordination, and the algorithm is substantially easier to reason about 
 ```
 CRDT/
 ├── client/                 # Vite + React + TypeScript frontend
+│   ├── api/                        # Vercel serverless functions (deployed)
+│   │   ├── _lib/                   # supabaseAdmin, auth, rooms, judge0 helpers
+│   │   ├── rooms/                  # POST/GET /api/rooms, GET/PATCH /api/rooms/:slug
+│   │   ├── catchup.ts              # GET /api/catchup — last snapshot for late joiners
+│   │   ├── snapshot.ts             # POST /api/snapshot — debounced full-doc persistence
+│   │   └── execute.ts              # POST /api/execute — quota-checked Judge0 proxy
 │   ├── src/
 │   │   ├── hooks/
-│   │   │   ├── useWebSocket.ts     # Connection lifecycle + exponential backoff
-│   │   │   └── useCollabEditor.ts  # Wires CRDT ↔ CodeMirror ↔ WebSocket
-│   │   ├── plugins/
-│   │   │   └── presence-plugin.ts  # CodeMirror ViewPlugin for live cursors
+│   │   │   ├── useRealtimeChannel.ts # Supabase Realtime broadcast+presence transport
+│   │   │   └── useCRDT.ts            # Wires CRDT ↔ CodeMirror ↔ transport
+│   │   ├── extensions/
+│   │   │   └── presenceCursors.ts    # CodeMirror ViewPlugin for live cursors
 │   │   └── pages/
 │   │       └── Room.tsx            # /room/:roomId page
+│   ├── vercel.json                 # Function timeouts + SPA rewrite
 │   └── package.json
-├── executor/               # Code execution microservice (Week 6)
+├── executor/               # Legacy code execution microservice (local Docker dev only)
 │   ├── src/
 │   │   ├── index.ts                # Express HTTP server, POST /execute
-│   │   ├── docker-runner.ts        # Spawns Docker containers per request
-│   │   └── languages.ts            # Language config (image, limits)
+│   │   ├── judge0-runner.ts        # Calls Judge0 CE (hosted sandboxed execution API)
+│   │   └── languages.ts            # Language config (Judge0 language_id, limits)
 │   └── Dockerfile
-├── server/                 # Node.js WebSocket server
+├── server/                 # Legacy Node.js WebSocket server (local Docker dev only)
 │   ├── src/
 │   │   ├── room-manager.ts         # Map<roomId, Set<Client>>, broadcast()
 │   │   ├── executor-client.ts      # HTTP client for executor service (Week 6)

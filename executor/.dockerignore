@@ -1,0 +1,10 @@
+# Used when building the executor with its own context (./executor).
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+*.tsbuildinfo
