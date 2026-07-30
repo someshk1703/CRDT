@@ -1,7 +1,7 @@
-import { requireUser, applyCors } from './_lib/auth';
-import { getRoomBySlug } from './_lib/rooms';
-import { supabaseAdmin } from './_lib/supabaseAdmin';
-import type { ApiRequest, ApiResponse } from './_lib/http';
+import { requireUser, applyCors } from './_lib/auth.js';
+import { getRoomBySlug } from './_lib/rooms.js';
+import { supabaseAdmin } from './_lib/supabaseAdmin.js';
+import type { ApiRequest, ApiResponse } from './_lib/http.js';
 import type { CRDTChar } from '../../shared/src/crdt';
 
 /**

@@ -1,8 +1,8 @@
 import { createHash } from 'crypto';
-import { requireUser, applyCors } from './_lib/auth';
-import { supabaseAdmin } from './_lib/supabaseAdmin';
-import { runViaJudge0, MAX_CODE_BYTES, LANGUAGE_IDS, type SupportedLanguage } from './_lib/judge0';
-import type { ApiRequest, ApiResponse } from './_lib/http';
+import { requireUser, applyCors } from './_lib/auth.js';
+import { supabaseAdmin } from './_lib/supabaseAdmin.js';
+import { runViaJudge0, MAX_CODE_BYTES, LANGUAGE_IDS, type SupportedLanguage } from './_lib/judge0.js';
+import type { ApiRequest, ApiResponse } from './_lib/http.js';
 
 /**
  * Global (first-come-first-served) daily cap shared across all users — this
