@@ -41,9 +41,11 @@ export async function requireUser(req: ApiRequest, res: ApiResponse): Promise<Au
   return user;
 }
 
-/** Applies permissive CORS headers so the SPA (same Vercel project) can call these routes. */
+/** Applies CORS headers restricted to ALLOWED_ORIGIN (falls back to reflecting the request Origin in local dev). */
 export function applyCors(req: ApiRequest, res: ApiResponse): void {
-  const origin = (req.headers['origin'] as string | undefined) ?? '*';
+  const requestOrigin = (req.headers['origin'] as string | undefined) ?? '';
+  const allowedOrigin = process.env['ALLOWED_ORIGIN'];
+  const origin = allowedOrigin ?? (requestOrigin || '*');
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');

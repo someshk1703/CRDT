@@ -1,4 +1,4 @@
-$schema = "https://railway.com/railway.schema.json"
+"$schema" = "https://railway.com/railway.schema.json"
 
 # In Railway, set this service's Root Directory to the repo root (blank) and
 # point "Config File Path" (in dashboard) to /server/railway.toml.

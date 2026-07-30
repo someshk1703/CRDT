@@ -1,4 +1,4 @@
-$schema = "https://railway.com/railway.schema.json"
+"$schema" = "https://railway.com/railway.schema.json"
 
 # Unlike server/client, the executor has no dependency on the shared workspace
 # package, so set this service's Root Directory to "executor" (not blank) in
