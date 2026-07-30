@@ -1,6 +1,8 @@
 # Build context MUST be the repository root (`docker build -f server/Dockerfile .`)
 # so npm workspaces can resolve the @crdt/shared package.
-FROM node:20-alpine
+# Node 22+ required: @supabase/supabase-js's Realtime client needs the native
+# global WebSocket API, which Node 20 doesn't provide.
+FROM node:22-alpine
 WORKDIR /app
 
 # Install deps first for layer caching. All workspace manifests must be present
