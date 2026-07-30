@@ -16,6 +16,6 @@
     "test:executor": "npm run test -w executor"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }
