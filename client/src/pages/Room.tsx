@@ -52,7 +52,11 @@ import { OutputPanel, type OutputLine } from '../components/OutputPanel';
   document.head.appendChild(s);
 })();
 
-const WS_BASE = (import.meta.env.VITE_WS_URL as string | undefined) ?? 'ws://localhost:3001';
+// Priority: build-time env → EngineX host-injected localStorage → local dev default
+const WS_BASE =
+  (import.meta.env.VITE_WS_URL as string | undefined) ??
+  localStorage.getItem('enginex_crdt_ws_url') ??
+  'ws://localhost:3001';
 
 export function Room() {
   const { roomId } = useParams<{ roomId: string }>();
