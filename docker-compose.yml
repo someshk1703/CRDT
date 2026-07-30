@@ -3,8 +3,8 @@ version: '3.9'
 services:
   server:
     build:
-      context: ./server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: server/Dockerfile
     ports:
       - '3001:3001'
     environment:
@@ -26,9 +26,9 @@ services:
       - '3002:3002'
     environment:
       - PORT=3002
-    volumes:
-      # Mount Docker socket so executor can spawn sibling containers
-      - /var/run/docker.sock:/var/run/docker.sock
+      - JUDGE0_API_URL=${JUDGE0_API_URL:-https://judge0-ce.p.rapidapi.com}
+      - JUDGE0_API_KEY=${JUDGE0_API_KEY}
+      - JUDGE0_API_HOST=${JUDGE0_API_HOST:-judge0-ce.p.rapidapi.com}
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3002/health']
       interval: 10s
@@ -39,12 +39,16 @@ services:
 
   client:
     build:
-      context: ./client
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: client/Dockerfile
+      args:
+        VITE_BASE_PATH: /
+        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:3001}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
     ports:
-      - '5173:80'
-    environment:
-      - VITE_WS_URL=${VITE_WS_URL:-ws://localhost:3001}
+      - '5173:4173'
     depends_on:
       - server
     restart: unless-stopped

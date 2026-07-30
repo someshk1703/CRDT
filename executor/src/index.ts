@@ -1,28 +1,15 @@
 import express, { Request, Response } from "express";
-import { execFileSync } from "child_process";
-import { runInDocker } from "./docker-runner.js";
-import { runDirect } from "./direct-runner.js";
+import { runViaJudge0 } from "./judge0-runner.js";
 import { LANGUAGES, MAX_CODE_BYTES, SupportedLanguage } from "./languages.js";
 
 const app = express();
 app.use(express.json({ limit: "128kb" }));
 
-/** true if `docker info` succeeds (Docker daemon is running) */
-function isDockerAvailable(): boolean {
-  try {
-    execFileSync("docker", ["info"], { stdio: "ignore", timeout: 3000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const DOCKER_AVAILABLE = isDockerAvailable();
-console.log(`[executor] Docker available: ${DOCKER_AVAILABLE}${DOCKER_AVAILABLE ? "" : " — using direct execution (dev mode)"}`);
-
-const runCode = DOCKER_AVAILABLE ? runInDocker : runDirect;
-
 const PORT = parseInt(process.env.PORT ?? "3002", 10);
+
+if (!process.env.JUDGE0_API_KEY) {
+  console.warn("[executor] JUDGE0_API_KEY is not set — /execute requests will fail until configured");
+}
 
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ status: "ok", service: "crdt-executor" });
@@ -56,7 +43,7 @@ app.post("/execute", (req: Request, res: Response) => {
   res.setHeader("Cache-Control", "no-cache");
   res.flushHeaders();
 
-  runCode(
+  void runViaJudge0(
     language as SupportedLanguage,
     code,
     (chunk, stream) => {

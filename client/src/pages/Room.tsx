@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { basicSetup, EditorView } from 'codemirror';
 import { Compartment } from '@codemirror/state';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useRealtimeChannel } from '../hooks/useRealtimeChannel';
 import { useCRDT } from '../hooks/useCRDT';
 import { usePresence } from '../hooks/usePresence';
 import { useSession } from '../hooks/useSession';
-import { getRoom, renameRoom, type RoomInfo } from '../hooks/useRooms';
+import { getRoom, renameRoom, getCatchup, saveSnapshot, executeCode, type RoomInfo } from '../hooks/useRooms';
 import { getLanguageExtension } from '../extensions/languageSwitcher';
 import { getThemeExtension, DEFAULT_THEME } from '../extensions/themeSwitcher';
 import { showMinimap } from '@replit/codemirror-minimap';
@@ -52,11 +52,8 @@ import { OutputPanel, type OutputLine } from '../components/OutputPanel';
   document.head.appendChild(s);
 })();
 
-// Priority: build-time env → EngineX host-injected localStorage → local dev default
-const WS_BASE =
-  (import.meta.env.VITE_WS_URL as string | undefined) ??
-  localStorage.getItem('enginex_crdt_ws_url') ??
-  'ws://localhost:3001';
+/** Debounce delay for persisting a full CRDT snapshot after the user stops typing. */
+const SNAPSHOT_DEBOUNCE_MS = 7_000;
 
 export function Room() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -87,10 +84,22 @@ export function Room() {
     }))
   ).current;
 
-  // WS URL includes auth token
-  const wsUrl = roomId && session
-    ? `${WS_BASE}/room/${roomId}?token=${session.access_token}`
-    : null;
+  // Self identity broadcast over the Realtime channel (color is derived deterministically)
+  const self = useMemo(() => {
+    if (!session) return null;
+    const meta = session.user.user_metadata as Record<string, unknown>;
+    return {
+      userId: session.user.id,
+      username: (meta['user_name'] as string | undefined) ?? (meta['name'] as string | undefined) ?? 'anonymous',
+      avatarUrl: (meta['avatar_url'] as string | undefined) ?? '',
+    };
+  }, [session]);
+
+  // Editor mount + catchup-snapshot-loaded gates — the realtime channel only
+  // subscribes once the last persisted snapshot has been applied, so broadcast
+  // (which carries no history) never overwrites state loaded from persistence.
+  const [editorReady, setEditorReady] = useState(false);
+  const [catchupDone, setCatchupDone] = useState(false);
 
   // ── useCRDT ───────────────────────────────────────────────────────────────
 
@@ -100,6 +109,7 @@ export function Room() {
     setView: setCrdtView,
     sendRef,
     sendLanguageChange,
+    getChars,
   } = useCRDT(session?.user.id ?? 'anon', roomId ?? '', {
     onRemoteChange: (from, removed, inserted) => {
       reconcileCursors(from, removed, inserted);
@@ -185,17 +195,66 @@ export function Room() {
     [applyRemoteOp, handlePresenceMessage],
   );
 
-  const { send, status } = useWebSocket(wsUrl, { onMessage: handleMessage });
+  const { send, status } = useRealtimeChannel(catchupDone ? (roomId ?? null) : null, self, handleMessage);
   sendRef.current = send;
   sendFnRef.current = send;
 
-  // Close WS when session is cleared (sign-out) — M1
-  const wsRef = useRef<WebSocket | null>(null);
+  // ── Catch-up: load the last persisted snapshot before the realtime channel
+  // subscribes — broadcast is ephemeral, so this is the only source of state
+  // for anything that happened before this client connects. ────────────────
   useEffect(() => {
-    if (!session) {
-      wsRef.current?.close();
-    }
-  }, [session]);
+    setCatchupDone(false);
+    if (!roomId || !session || !editorReady) return;
+
+    let cancelled = false;
+    getCatchup(roomId)
+      .then((catchup) => {
+        if (cancelled) return;
+        applyRemoteOp({
+          type: 'catchup',
+          roomId,
+          userId: session.user.id,
+          currentLanguage: catchup.currentLanguage,
+          snapshot: catchup.snapshot ? { chars: catchup.snapshot.chars, lastClock: 0 } : null,
+          ops: [],
+        });
+      })
+      .catch((err: unknown) => console.error('[room] catchup failed:', (err as Error).message))
+      .finally(() => { if (!cancelled) setCatchupDone(true); });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, session, editorReady]);
+
+  // ── Debounced snapshot persistence ─────────────────────────────────────────
+
+  const roomIdRef = useRef(roomId);
+  roomIdRef.current = roomId;
+  const catchupDoneRef = useRef(catchupDone);
+  catchupDoneRef.current = catchupDone;
+  const getCharsRef = useRef(getChars);
+  getCharsRef.current = getChars;
+  const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleSnapshotPersist = useCallback(() => {
+    const rid = roomIdRef.current;
+    if (!rid || !catchupDoneRef.current) return;
+    if (snapshotTimerRef.current) clearTimeout(snapshotTimerRef.current);
+    snapshotTimerRef.current = setTimeout(() => {
+      saveSnapshot(rid, getCharsRef.current()).catch((err: unknown) =>
+        console.error('[room] snapshot persist failed:', (err as Error).message));
+    }, SNAPSHOT_DEBOUNCE_MS);
+  }, []);
+
+  useEffect(() => {
+    return () => { if (snapshotTimerRef.current) clearTimeout(snapshotTimerRef.current); };
+  }, []);
+
+  const snapshotListenerExtension = useRef(
+    EditorView.updateListener.of((update) => {
+      if (update.docChanged) scheduleSnapshotPersist();
+    }),
+  ).current;
 
   // ── Load room metadata ────────────────────────────────────────────────────
 
@@ -207,6 +266,32 @@ export function Room() {
       setLanguage(info.language);
     }).catch(() => setRoomNotFound(true));
   }, [roomId, session]);
+
+  // ── Run (Week 6 / serverless): proxy through /api/execute, then broadcast
+  // the result to the room over the realtime channel so every peer — including
+  // the initiator, since broadcast is configured with `self: true` — sees it. ──
+
+  const runCode = useCallback(() => {
+    if (!roomId) return;
+    const code = viewRef.current?.state.doc.toString() ?? '';
+    setIsRunning(true);
+    setOutputLines([]);
+    send({ type: 'exec-start', language });
+
+    executeCode(roomId, language, code)
+      .then((result) => {
+        if (result.stdout) send({ type: 'exec-output', chunk: result.stdout, stream: 'stdout' });
+        if (result.stderr) send({ type: 'exec-output', chunk: result.stderr, stream: 'stderr' });
+        if (!result.ok) {
+          send({ type: 'exec-error', reason: result.reason ?? 'service-unavailable', message: result.message ?? 'Execution failed' });
+          return;
+        }
+        send({ type: 'exec-done', exitCode: result.exitCode });
+      })
+      .catch(() => {
+        send({ type: 'exec-error', reason: 'service-unavailable', message: 'Failed to reach execution service' });
+      });
+  }, [roomId, language, send]);
 
   // ── Cursor selection listener ─────────────────────────────────────────────
 
@@ -237,6 +322,7 @@ export function Room() {
         ...crdtExtensions,
         presenceExtensions,
         selectionListenerExtension,
+        snapshotListenerExtension,
       ],
       parent: editorContainerRef.current,
     });
@@ -244,11 +330,13 @@ export function Room() {
     viewRef.current = view;
     setCrdtView(view);
     setPresenceView(view);
+    setEditorReady(true);
 
     return () => {
       view.destroy();
       viewRef.current = null;
       editorMountedRef.current = false;
+      setEditorReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading]);
@@ -311,14 +399,12 @@ export function Room() {
         onRoomNameChange={(name) => {
           renameRoom(roomId, name).then((updated) => {
             setRoomInfo((prev) => prev ? { ...prev, name: updated.name } : prev);
+            send({ type: 'room-meta', name: updated.name });
           }).catch(console.error);
         }}
         connectedUsers={connectedUsers}
         isRunning={isRunning}
-        onRun={() => {
-          const code = viewRef.current?.state.doc.toString() ?? '';
-          send({ type: 'exec-run', roomId, language, code });
-        }}
+        onRun={runCode}
       />
       <div
         ref={editorContainerRef}

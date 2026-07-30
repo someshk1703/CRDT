@@ -1,8 +1,4 @@
 FROM node:20-alpine
-
-# Install Docker CLI so the executor can spawn sibling containers
-RUN apk add --no-cache docker-cli
-
 WORKDIR /app
 
 COPY package.json ./

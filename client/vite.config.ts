@@ -5,12 +5,8 @@ import { fileURLToPath } from 'url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
-const isProd = process.env.NODE_ENV === 'production';
-
 export default defineConfig({
   plugins: [react()],
-  // Served at /collab/ when co-deployed inside EngineX
-  base: isProd ? '/collab/' : '/',
   resolve: {
     alias: {
       // Allow client to import from the shared workspace package

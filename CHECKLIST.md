@@ -253,10 +253,16 @@ Track end-of-week completion. Check off items only when verified end-to-end (not
 
 ### Deployment
 
-- [ ] Frontend deployed to Vercel
-- [ ] WebSocket server deployed to Railway (persistent process — NOT Vercel serverless)
-- [ ] CORS: `Access-Control-Allow-Origin` set to Vercel origin (not `*`)
-- [ ] Environment variables set in Railway dashboard (not committed)
+> **Updated architecture**: CRDT sync moved from a persistent Railway
+> WebSocket server to Supabase Realtime broadcast/presence, with room/catchup/
+> snapshot/execute logic moved to Vercel serverless functions (`client/api/`).
+> The Railway `server/`+`executor/` path remains for local Docker dev only.
+
+- [x] Frontend + `/api/*` deployed to Vercel (one project)
+- [x] CRDT transport migrated to Supabase Realtime (no persistent server needed)
+- [ ] CORS: `Access-Control-Allow-Origin` set to Vercel origin (not `*`) in `client/api/_lib/auth.ts`
+- [ ] Environment variables set in Vercel dashboard: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JUDGE0_API_KEY`, `JUDGE0_API_HOST`, `JUDGE0_API_URL` (not committed)
+- [ ] Supabase SQL migration applied (`executions`, `execution_cache` tables in `server/src/db/schema.sql`)
 - [ ] Live demo URL in README
 - [ ] Demo GIF (10s, two windows, live cursors) at top of README
 
