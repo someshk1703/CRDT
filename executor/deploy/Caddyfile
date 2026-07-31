@@ -1,0 +1,8 @@
+{$EXECUTOR_DOMAIN} {
+	reverse_proxy executor:3002
+
+	# Health checks don't need TLS client verification, but everything on
+	# this host is otherwise public-facing — the executor's own bearer
+	# token check (EXECUTOR_AUTH_TOKEN) is the real access control.
+	encode gzip
+}

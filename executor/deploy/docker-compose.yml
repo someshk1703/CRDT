@@ -1,0 +1,49 @@
+version: '3.9'
+
+# VPS-only stack: just the executor + a Caddy reverse proxy for automatic
+# HTTPS. Does NOT include server/client — those stay on Vercel/Supabase.
+# Deploy from the repo root on the VM:
+#   cd executor/deploy && EXECUTOR_DOMAIN=executor.yourdomain.com docker compose up -d
+
+services:
+  executor:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    volumes:
+      # Real per-request Docker sandboxing (see executor/src/docker-runner.ts) —
+      # this is the whole point of running on a real VM instead of Railway.
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - PORT=3002
+      - EXECUTOR_AUTH_TOKEN=${EXECUTOR_AUTH_TOKEN:?EXECUTOR_AUTH_TOKEN must be set — this host is public}
+      - JUDGE0_API_URL=${JUDGE0_API_URL:-https://judge0-ce.p.rapidapi.com}
+      - JUDGE0_API_KEY=${JUDGE0_API_KEY}
+      - JUDGE0_API_HOST=${JUDGE0_API_HOST:-judge0-ce.p.rapidapi.com}
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3002/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      - EXECUTOR_DOMAIN=${EXECUTOR_DOMAIN:?EXECUTOR_DOMAIN must be set, e.g. executor.yourdomain.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      executor:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

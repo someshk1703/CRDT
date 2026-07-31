@@ -70,9 +70,18 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
     return;
   }
 
-  const result = await runViaJudge0(language as SupportedLanguage, code);
+  // Prefer the self-hosted VPS executor (real Docker sandbox) when configured;
+  // fall back to Judge0 CE if EXECUTOR_URL isn't set or the executor errors out
+  // with 'service-unavailable' (host down, box rebooting, etc.).
+  let result = process.env['EXECUTOR_URL']
+    ? await runViaExecutor(language as SupportedLanguage, code)
+    : await runViaJudge0(language as SupportedLanguage, code);
 
-  // Every real Judge0 call (success or failure) counts against the shared quota.
+  if (!result.ok && result.reason === 'service-unavailable' && process.env['EXECUTOR_URL']) {
+    result = await runViaJudge0(language as SupportedLanguage, code);
+  }
+
+  // Every real execution (success or failure) counts against the shared quota.
   await supabaseAdmin.from('executions').insert({ user_id: user.id, created_at: new Date().toISOString() });
 
   if (result.ok) {
