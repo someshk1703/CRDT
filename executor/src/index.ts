@@ -48,11 +48,30 @@ if (DOCKER_AVAILABLE) {
   runCode = runDirect;
 }
 
+const EXECUTOR_AUTH_TOKEN = process.env.EXECUTOR_AUTH_TOKEN;
+if (!EXECUTOR_AUTH_TOKEN) {
+  console.warn("[executor] EXECUTOR_AUTH_TOKEN is not set — /execute is UNAUTHENTICATED (fine for local dev, never expose like this publicly)");
+}
+
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ status: "ok", service: "crdt-executor", runner: DOCKER_AVAILABLE ? "docker" : process.env.JUDGE0_API_KEY ? "judge0" : "direct" });
 });
 
+/** Requires `Authorization: Bearer <EXECUTOR_AUTH_TOKEN>` when that env var is configured. */
+function requireAuth(req: Request, res: Response): boolean {
+  if (!EXECUTOR_AUTH_TOKEN) return true; // no token configured — local dev convenience
+  const header = req.headers.authorization ?? "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (token !== EXECUTOR_AUTH_TOKEN) {
+    res.status(401).json({ error: "Unauthorized" });
+    return false;
+  }
+  return true;
+}
+
 app.post("/execute", (req: Request, res: Response) => {
+  if (!requireAuth(req, res)) return;
+
   const { language, code } = req.body as { language: unknown; code: unknown };
 
   // Validate language
