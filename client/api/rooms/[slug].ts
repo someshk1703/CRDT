@@ -1,6 +1,6 @@
-import { requireUser, applyCors } from '../_lib/auth';
+import { requireUser, applyCors } from '../_lib/auth.js';
 import { getRoomBySlug, updateRoomName } from '../_lib/rooms';
-import type { ApiRequest, ApiResponse } from '../_lib/http';
+import type { ApiRequest, ApiResponse } from '../_lib/http.js';
 
 const SLUG_RE = /^[a-z0-9]{1,64}$/i;
 

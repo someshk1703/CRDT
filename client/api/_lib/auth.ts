@@ -1,5 +1,5 @@
-import { supabaseAdmin } from './supabaseAdmin';
-import type { ApiRequest, ApiResponse } from './http';
+import { supabaseAdmin } from './supabaseAdmin.js';
+import type { ApiRequest, ApiResponse } from './http.js';
 
 export interface AuthUser {
   id: string;

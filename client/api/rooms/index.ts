@@ -1,6 +1,6 @@
-import { requireUser, applyCors } from '../_lib/auth';
+import { requireUser, applyCors } from '../_lib/auth.js';
 import { createRoom, generateUniqueSlug, getRecentRoomsForUser, SUPPORTED_LANGUAGES } from '../_lib/rooms';
-import type { ApiRequest, ApiResponse } from '../_lib/http';
+import type { ApiRequest, ApiResponse } from '../_lib/http.js';
 
 /** GET /api/rooms — list the caller's recent rooms. POST /api/rooms — create a room. */
 export default async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {

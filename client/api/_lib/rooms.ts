@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import { supabaseAdmin } from './supabaseAdmin';
+import { supabaseAdmin } from './supabaseAdmin.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
