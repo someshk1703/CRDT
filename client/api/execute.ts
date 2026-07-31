@@ -2,7 +2,6 @@ import { createHash } from 'crypto';
 import { requireUser, applyCors } from './_lib/auth.js';
 import { supabaseAdmin } from './_lib/supabaseAdmin.js';
 import { runViaJudge0, MAX_CODE_BYTES, LANGUAGE_IDS, type SupportedLanguage } from './_lib/judge0.js';
-import { runViaExecutor } from './_lib/executor.js';
 import type { ApiRequest, ApiResponse } from './_lib/http.js';
 
 /**

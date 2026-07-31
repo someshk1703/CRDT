@@ -2,7 +2,7 @@ import { requireUser, applyCors } from './_lib/auth.js';
 import { getRoomBySlug } from './_lib/rooms.js';
 import { supabaseAdmin } from './_lib/supabaseAdmin.js';
 import type { ApiRequest, ApiResponse } from './_lib/http.js';
-import type { CRDTChar } from '../../shared/src/crdt.js';
+import type { CRDTChar } from '../../shared/src/crdt';
 
 /**
  * GET /api/catchup?roomId=xxx
