@@ -45,6 +45,7 @@ export function Home() {
   }
 
   if (!session) {
+    const inIframe = window.self !== window.top;
     return (
       <div style={s.root}>
         <h1 style={s.heading}>CRDT Collaborative Editor</h1>
@@ -55,6 +56,11 @@ export function Home() {
           <button style={s.primaryBtn} onClick={() => void signIn()}>
             Sign in with GitHub
           </button>
+          {inIframe && (
+            <p style={{ color: '#6c7086', fontSize: '0.78rem', textAlign: 'center', margin: '0.5rem 0 0' }}>
+              A new tab will open for sign-in — come back here when done.
+            </p>
+          )}
         </div>
       </div>
     );
