@@ -51,10 +51,23 @@ export function useSession(): SessionHook {
   }, []);
 
   const signIn = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'github',
-      options: { redirectTo: window.location.origin },
-    });
+    // When embedded in an iframe, GitHub blocks OAuth redirects inside frames.
+    // Get the OAuth URL without redirecting, then open it in a new tab.
+    // Supabase's onAuthStateChange fires in the iframe once the popup completes
+    // (both share the same crdt-client.vercel.app localStorage origin).
+    const inIframe = window.self !== window.top;
+    if (inIframe) {
+      const { data } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: { redirectTo: window.location.origin, skipBrowserRedirect: true },
+      });
+      if (data?.url) window.open(data.url, '_blank', 'noopener');
+    } else {
+      await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: { redirectTo: window.location.origin },
+      });
+    }
   };
 
   const signOut = async () => {
