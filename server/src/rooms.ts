@@ -7,6 +7,7 @@ import {
   upsertRoom,
   getRecentRoomsForUser,
   updateRoomName,
+  enforceRoomLimit,
   type RoomRow,
 } from './db/operations.js';
 
@@ -108,6 +109,7 @@ export async function createRoomHandler(
 
   const slug = await generateUniqueSlug();
   const room = await createRoom(slug, name, language, user.id);
+  await enforceRoomLimit(user.id);
   jsonResponse(res, 201, room);
 }
 

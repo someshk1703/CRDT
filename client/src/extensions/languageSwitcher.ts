@@ -24,3 +24,27 @@ export const SUPPORTED_LANGUAGES: Record<string, { label: string; extension: () 
 export function getLanguageExtension(lang: string): LanguageSupport {
   return (SUPPORTED_LANGUAGES[lang] ?? SUPPORTED_LANGUAGES['javascript']).extension();
 }
+
+// ─── Boilerplate skeletons ────────────────────────────────────────────────────
+
+/**
+ * Starter syntactic scaffold inserted into a room's document when it is still
+ * empty at the time a language is selected — so e.g. Java's mandatory
+ * `public class Main { public static void main(String[] args) { } }` wrapper
+ * never has to be typed by hand.
+ */
+const LANGUAGE_BOILERPLATE: Record<string, string> = {
+  javascript: 'function main() {\n\n}\n\nmain();\n',
+  typescript: 'function main(): void {\n\n}\n\nmain();\n',
+  python: 'def main():\n    pass\n\n\nif __name__ == "__main__":\n    main()\n',
+  java: 'public class Main {\n    public static void main(String[] args) {\n\n    }\n}\n',
+  go: 'package main\n\nfunc main() {\n\n}\n',
+  html: '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <title>Document</title>\n</head>\n<body>\n\n</body>\n</html>\n',
+  css: 'body {\n\n}\n',
+  json: '{\n\n}\n',
+};
+
+/** Get the starter scaffold for a language ID, falling back to the JavaScript one. */
+export function getLanguageBoilerplate(lang: string): string {
+  return LANGUAGE_BOILERPLATE[lang] ?? LANGUAGE_BOILERPLATE['javascript'];
+}

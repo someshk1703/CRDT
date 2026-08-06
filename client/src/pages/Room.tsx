@@ -7,7 +7,7 @@ import { useCRDT } from '../hooks/useCRDT';
 import { usePresence } from '../hooks/usePresence';
 import { useSession } from '../hooks/useSession';
 import { getRoom, renameRoom, getCatchup, saveSnapshot, executeCode, type RoomInfo } from '../hooks/useRooms';
-import { getLanguageExtension } from '../extensions/languageSwitcher';
+import { getLanguageExtension, getLanguageBoilerplate } from '../extensions/languageSwitcher';
 import { getThemeExtension, DEFAULT_THEME } from '../extensions/themeSwitcher';
 import { showMinimap } from '@replit/codemirror-minimap';
 import { Toolbar } from '../components/Toolbar';
@@ -74,6 +74,10 @@ export function Room() {
   const outputLineId = useRef(0);
   const languageCompartment = useRef(new Compartment()).current;
   const themeCompartment = useRef(new Compartment()).current;
+
+  // Text of the scaffold we last auto-inserted, if the doc still matches it
+  // untouched — lets a later language switch safely swap it for another one.
+  const boilerplateRef = useRef<string | null>(null);
 
   // Minimap extension — computed once, stable reference
   const minimapExtension = useRef(
@@ -218,6 +222,15 @@ export function Room() {
           snapshot: catchup.snapshot ? { chars: catchup.snapshot.chars, lastClock: 0 } : null,
           ops: [],
         });
+
+        // Brand-new room (nothing ever persisted) — seed the language scaffold
+        // as a real local edit so it syncs/persists like any other keystroke.
+        const view = viewRef.current;
+        if (!catchup.snapshot && view && view.state.doc.length === 0) {
+          const boilerplate = getLanguageBoilerplate(catchup.currentLanguage);
+          view.dispatch({ changes: { from: 0, to: 0, insert: boilerplate } });
+          boilerplateRef.current = boilerplate;
+        }
       })
       .catch((err: unknown) => console.error('[room] catchup failed:', (err as Error).message))
       .finally(() => { if (!cancelled) setCatchupDone(true); });
@@ -362,7 +375,7 @@ export function Room() {
   // ── Auth guard ────────────────────────────────────────────────────────────
 
   if (authLoading) {
-    return <div style={{ padding: '2rem', color: '#cdd6f4', background: '#1e1e2e', minHeight: '100vh' }}>Loading…</div>;
+    return <div className="crdt-page" style={{ padding: '2rem', color: 'var(--text-primary)' }}>Loading…</div>;
   }
 
   if (!session) {
@@ -371,55 +384,68 @@ export function Room() {
   }
 
   if (!roomId) {
-    return <div style={{ padding: '2rem', color: '#f38ba8', background: '#1e1e2e', minHeight: '100vh' }}>
-      No room ID in URL. <a href="/" style={{ color: '#89b4fa' }}>Go home</a>.
+    return <div className="crdt-page" style={{ padding: '2rem', color: 'var(--accent-red)' }}>
+      No room ID in URL. <a href="/" style={{ color: 'var(--accent-cyan)' }}>Go home</a>.
     </div>;
   }
 
   if (roomNotFound) {
-    return <div style={{ padding: '2rem', color: '#f38ba8', background: '#1e1e2e', minHeight: '100vh' }}>
-      Room not found. <a href="/" style={{ color: '#89b4fa' }}>Go home</a>.
+    return <div className="crdt-page" style={{ padding: '2rem', color: 'var(--accent-red)' }}>
+      Room not found. <a href="/" style={{ color: 'var(--accent-cyan)' }}>Go home</a>.
     </div>;
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#1e1e2e' }}>
-      <Toolbar
-        roomName={roomInfo?.name ?? roomId}
-        roomSlug={roomId}
-        language={language}
-        theme={theme}
-        onThemeChange={setTheme}
-        onLanguageChange={(lang) => {
-          setLanguage(lang);
-          sendLanguageChange(lang);
-        }}
-        onRoomNameChange={(name) => {
-          renameRoom(roomId, name).then((updated) => {
-            setRoomInfo((prev) => prev ? { ...prev, name: updated.name } : prev);
-            send({ type: 'room-meta', name: updated.name });
-          }).catch(console.error);
-        }}
-        connectedUsers={connectedUsers}
-        isRunning={isRunning}
-        onRun={runCode}
-      />
-      <div
-        ref={editorContainerRef}
-        style={{ flex: 1, overflow: 'auto', fontSize: '14px', minHeight: 0 }}
-      />
-      <OutputPanel
-        lines={outputLines}
-        isRunning={isRunning}
-        onClear={() => setOutputLines([])}
-      />
-      {status === 'error' && (
-        <div style={{ padding: '0.4rem 1rem', background: '#f38ba8', color: '#1e1e2e', fontSize: '0.8rem' }}>
-          Connection error — retrying…
-        </div>
-      )}
+    <div className="crdt-page" style={{ display: 'flex', flexDirection: 'column', height: '100vh', padding: '1.25rem' }}>
+      <div className="crdt-box" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <Toolbar
+          roomName={roomInfo?.name ?? roomId}
+          roomSlug={roomId}
+          language={language}
+          theme={theme}
+          onThemeChange={setTheme}
+          onLanguageChange={(lang) => {
+            setLanguage(lang);
+            sendLanguageChange(lang);
+            // Swap the scaffold for the new language, but only while the doc is
+            // empty or still exactly the scaffold we last auto-inserted — never
+            // clobber code someone actually wrote.
+            const view = viewRef.current;
+            if (!view) return;
+            const currentText = view.state.doc.toString();
+            if (currentText.length === 0 || currentText === boilerplateRef.current) {
+              const boilerplate = getLanguageBoilerplate(lang);
+              view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: boilerplate } });
+              boilerplateRef.current = boilerplate;
+            }
+          }}
+          onRoomNameChange={(name) => {
+            renameRoom(roomId, name).then((updated) => {
+              setRoomInfo((prev) => prev ? { ...prev, name: updated.name } : prev);
+              send({ type: 'room-meta', name: updated.name });
+            }).catch(console.error);
+          }}
+          connectedUsers={connectedUsers}
+          isRunning={isRunning}
+          onRun={runCode}
+        />
+        <div
+          ref={editorContainerRef}
+          style={{ flex: 1, overflow: 'auto', fontSize: '14px', minHeight: 0 }}
+        />
+        <OutputPanel
+          lines={outputLines}
+          isRunning={isRunning}
+          onClear={() => setOutputLines([])}
+        />
+        {status === 'error' && (
+          <div style={{ padding: '0.4rem 1rem', background: 'var(--accent-red)', color: 'var(--bg-primary)', fontSize: '0.8rem' }}>
+            Connection error — retrying…
+          </div>
+        )}
+      </div>
     </div>
   );
 }

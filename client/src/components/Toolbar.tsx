@@ -30,49 +30,19 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '0.75rem',
     padding: '0.5rem 1rem',
-    background: '#181825',
-    borderBottom: '1px solid #313244',
+    background: 'var(--bg-tertiary)',
+    borderBottom: '1px solid var(--border-color)',
     flexWrap: 'wrap',
   },
   roomName: {
     fontWeight: 600,
-    color: '#cdd6f4',
+    color: 'var(--text-primary)',
     fontSize: '0.95rem',
     flex: '0 0 auto',
     maxWidth: '200px',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-  },
-  select: {
-    padding: '0.3rem 0.5rem',
-    borderRadius: '6px',
-    border: '1px solid #45475a',
-    background: '#1e1e2e',
-    color: '#cdd6f4',
-    fontSize: '0.85rem',
-    cursor: 'pointer',
-  },
-  btn: {
-    padding: '0.3rem 0.75rem',
-    borderRadius: '6px',
-    border: '1px solid #45475a',
-    background: '#1e1e2e',
-    color: '#a6adc8',
-    fontSize: '0.85rem',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap' as const,
-  },
-  btnRun: {
-    padding: '0.3rem 0.75rem',
-    borderRadius: '6px',
-    border: '1px solid #a6e3a1',
-    background: '#1e1e2e',
-    color: '#a6e3a1',
-    fontSize: '0.85rem',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap' as const,
-    fontWeight: 600,
   },
   avatarStack: {
     display: 'flex',
@@ -83,7 +53,7 @@ const s: Record<string, React.CSSProperties> = {
     width: '28px',
     height: '28px',
     borderRadius: '50%',
-    border: '2px solid #181825',
+    border: '2px solid var(--bg-tertiary)',
     marginLeft: '-6px',
     objectFit: 'cover' as const,
   },
@@ -91,23 +61,23 @@ const s: Record<string, React.CSSProperties> = {
     width: '28px',
     height: '28px',
     borderRadius: '50%',
-    border: '2px solid #181825',
+    border: '2px solid var(--bg-tertiary)',
     marginLeft: '-6px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: '0.6rem',
     fontWeight: 700,
-    color: '#1e1e2e',
+    color: 'var(--bg-primary)',
   },
   overflow: {
     width: '28px',
     height: '28px',
     borderRadius: '50%',
-    border: '2px solid #181825',
+    border: '2px solid var(--bg-tertiary)',
     marginLeft: '-6px',
-    background: '#45475a',
-    color: '#cdd6f4',
+    background: 'var(--border-color)',
+    color: 'var(--text-primary)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -116,20 +86,12 @@ const s: Record<string, React.CSSProperties> = {
   },
   countBadge: {
     fontSize: '0.8rem',
-    color: '#6c7086',
+    color: 'var(--text-secondary)',
     marginLeft: '0.5rem',
     whiteSpace: 'nowrap' as const,
   },
-  fallbackInput: {
-    padding: '0.3rem 0.5rem',
-    borderRadius: '6px',
-    border: '1px solid #45475a',
-    background: '#1e1e2e',
-    color: '#cdd6f4',
-    fontSize: '0.8rem',
-    width: '260px',
-  },
 };
+
 
 export function Toolbar({
   roomName,
@@ -175,7 +137,7 @@ export function Toolbar({
       {/* Room name */}
       {onRoomNameChange ? (
         <input
-          style={s.select}
+          className="crdt-select"
           defaultValue={roomName}
           onBlur={(e) => { if (e.target.value.trim()) onRoomNameChange(e.target.value.trim()); }}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
@@ -187,7 +149,7 @@ export function Toolbar({
 
       {/* Language dropdown */}
       <select
-        style={s.select}
+        className="crdt-select"
         value={language}
         onChange={(e) => onLanguageChange(e.target.value)}
         title="Editor language"
@@ -199,7 +161,7 @@ export function Toolbar({
 
       {/* Theme dropdown */}
       <select
-        style={s.select}
+        className="crdt-select"
         value={theme}
         onChange={(e) => onThemeChange(e.target.value)}
         title="Editor theme"
@@ -215,20 +177,16 @@ export function Toolbar({
 
       {/* Copy link */}
       {copyFallback ? (
-        <input style={s.fallbackInput} readOnly value={roomUrl} onClick={(e) => e.currentTarget.select()} />
+        <input className="crdt-input" readOnly value={roomUrl} style={{ width: '260px' }} onClick={(e) => e.currentTarget.select()} />
       ) : (
-        <button style={s.btn} onClick={handleCopyLink} title="Copy shareable link">
+        <button className="crdt-btn crdt-btn-secondary" onClick={handleCopyLink} title="Copy shareable link">
           Copy link
         </button>
       )}
 
       {/* Run button */}
       <button
-        style={
-          onRun && !isRunning
-            ? s.btnRun
-            : { ...s.btn, opacity: 0.4, cursor: 'not-allowed' }
-        }
+        className="crdt-btn crdt-btn-run"
         disabled={!onRun || isRunning}
         onClick={onRun}
         title={isRunning ? 'Running…' : 'Run code (Ctrl+Enter)'}
