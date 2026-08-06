@@ -8,10 +8,10 @@ describe("Language config", () => {
     expect(LANGUAGES).toHaveProperty("java");
   });
 
-  it("assigns a Judge0 language_id to each language", () => {
-    expect(LANGUAGES.javascript.judge0Id).toBe(63);
-    expect(LANGUAGES.python.judge0Id).toBe(71);
-    expect(LANGUAGES.java.judge0Id).toBe(62);
+  it("assigns a Docker image to each language", () => {
+    expect(LANGUAGES.javascript.image).toBe("node:20-alpine");
+    expect(LANGUAGES.python.image).toBe("python:3.12-slim");
+    expect(LANGUAGES.java.image).toBe("openjdk:17-alpine");
   });
 });
 

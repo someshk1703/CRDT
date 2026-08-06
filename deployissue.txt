@@ -1,0 +1,107 @@
+node:internal/modules/cjs/loader:1210
+  throw err;
+  ^
+Error: Cannot find module '/app/server/dist/index.js'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+    at Module._load (node:internal/modules/cjs/loader:1038:27)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)
+    at node:internal/main/run_main_module:28:49 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+Node.js v20.20.2
+npm error Lifecycle script `start` failed with error:
+npm error code 1
+npm error path /app/server
+npm error workspace @crdt/server@1.0.0
+npm error location /app/server
+npm error command failed
+npm error command sh -c node dist/index.js
+> @crdt/server@1.0.0 start
+npm warn config production Use `--omit=dev` instead.
+npm error command sh -c node dist/index.js
+> node dist/index.js
+npm error Lifecycle script `start` failed with error:
+npm error location /app/server
+npm error code 1
+npm error command failed
+node:internal/modules/cjs/loader:1210
+npm error path /app/server
+npm error workspace @crdt/server@1.0.0
+  throw err;
+  ^
+}
+    at Module._load (node:internal/modules/cjs/loader:1038:27)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)
+Node.js v20.20.2
+    at node:internal/main/run_main_module:28:49 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+Error: Cannot find module '/app/server/dist/index.js'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+npm warn config production Use `--omit=dev` instead.
+> @crdt/server@1.0.0 start
+> node dist/index.js
+node:internal/modules/cjs/loader:1210
+  throw err;
+  ^
+Error: Cannot find module '/app/server/dist/index.js'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+    at Module._load (node:internal/modules/cjs/loader:1038:27)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)
+    at node:internal/main/run_main_module:28:49 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+Node.js v20.20.2
+npm error Lifecycle script `start` failed with error:
+npm error code 1
+npm error path /app/server
+npm error workspace @crdt/server@1.0.0
+npm error location /app/server
+npm error command failed
+npm error command sh -c node dist/index.js
+npm warn config production Use `--omit=dev` instead.
+> @crdt/server@1.0.0 start
+> node dist/index.js
+node:internal/modules/cjs/loader:1210
+  throw err;
+  ^
+Error: Cannot find module '/app/server/dist/index.js'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+    at Module._load (node:internal/modules/cjs/loader:1038:27)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)
+    at node:internal/main/run_main_module:28:49 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+Node.js v20.20.2
+npm error Lifecycle script `start` failed with error:
+npm error code 1
+npm error path /app/server
+npm error workspace @crdt/server@1.0.0
+npm error command failed
+npm error location /app/server
+npm error command sh -c node dist/index.js
+npm warn config production Use `--omit=dev` instead.
+> @crdt/server@1.0.0 start
+> node dist/index.js
+node:internal/modules/cjs/loader:1210
+  throw err;
+  ^
+Error: Cannot find module '/app/server/dist/index.js'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+    at Module._load (node:internal/modules/cjs/loader:1038:27)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)
+    at node:internal/main/run_main_module:28:49 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+Node.js v20.20.2
+npm error Lifecycle script `start` failed with error:
+npm error code 1
+npm error path /app/server
+npm error workspace @crdt/server@1.0.0
+npm error location /app/server
+npm error command failed
+npm error command sh -c node dist/index.js

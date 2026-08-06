@@ -1,5 +1,5 @@
 /**
- * Direct execution fallback for local dev when neither Docker nor Judge0 is
+ * Direct execution fallback for local dev when neither Docker nor Gemini is
  * available. Runs code via child_process without sandboxing — DEV ONLY.
  */
 import { spawn } from "child_process";

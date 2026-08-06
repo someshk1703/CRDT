@@ -61,7 +61,7 @@ CREATE POLICY "Users can read own room memberships"
   USING (auth.uid() = user_id);
 
 -- ─── Vercel serverless migration ─────────────────────────────────────────────
--- Backs client/api/execute.ts: global (first-come-first-served) 50/day Judge0
+-- Backs client/api/execute.ts: global (first-come-first-served) 50/day Gemini
 -- quota tracking, plus a short-TTL cache so repeated identical runs don't burn it.
 
 CREATE TABLE IF NOT EXISTS executions (

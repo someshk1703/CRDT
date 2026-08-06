@@ -17,9 +17,8 @@ services:
     environment:
       - PORT=3002
       - EXECUTOR_AUTH_TOKEN=${EXECUTOR_AUTH_TOKEN:?EXECUTOR_AUTH_TOKEN must be set — this host is public}
-      - JUDGE0_API_URL=${JUDGE0_API_URL:-https://judge0-ce.p.rapidapi.com}
-      - JUDGE0_API_KEY=${JUDGE0_API_KEY}
-      - JUDGE0_API_HOST=${JUDGE0_API_HOST:-judge0-ce.p.rapidapi.com}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3002/health']
       interval: 10s

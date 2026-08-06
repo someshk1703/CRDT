@@ -63,7 +63,7 @@ server can't run there. Sync transport is split from backend logic instead:
           │  /api/rooms     — create / list / rename rooms       │
           │  /api/catchup   — latest snapshot for late joiners    │
           │  /api/snapshot  — debounced full-doc persistence      │
-          │  /api/execute   — Judge0 proxy, 50/day global quota   │
+          │  /api/execute   — Gemini proxy, 50/day global quota    │
           └────────────────┬─────────────────┘
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -80,8 +80,9 @@ server can't run there. Sync transport is split from backend logic instead:
 - Every ~7s of editor inactivity, the client POSTs the full CRDT state to
   `/api/snapshot` (debounced, not per-keystroke).
 - `/api/execute` is the only piece that needs a real "server": it hides the
-  RapidAPI key and enforces a shared 50/day execution quota before proxying
-  to Judge0 CE.
+  Gemini API key and enforces a shared 50/day execution quota before running
+  the code through the Gemini API (real sandboxed execution for Python via
+  Gemini's code execution tool; simulated stdout/stderr for JavaScript/Java).
 
 **Deployment**:
 - Frontend + `/api/*` routes → **Vercel** (one project — static build + serverless functions)
@@ -121,7 +122,7 @@ server can't run there. Sync transport is split from backend logic instead:
 | API | Vercel serverless functions (`client/api/*`) |
 | Database | Supabase (PostgreSQL + Realtime) |
 | Auth | Supabase Auth (GitHub OAuth) |
-| Execution | Judge0 CE via RapidAPI, proxied through `/api/execute` (50/day global quota) |
+| Execution | Gemini API, proxied through `/api/execute` (50/day global quota) — real sandboxed execution for Python, simulated for JavaScript/Java |
 | Testing | Vitest (unit + convergence) · Playwright (E2E multi-tab) |
 | Deployment | Vercel (client + `/api/*`, one project) — Railway (`server/`, `executor/`) kept for local Docker dev only |
 
@@ -133,11 +134,11 @@ server can't run there. Sync transport is split from backend logic instead:
 CRDT/
 ├── client/                 # Vite + React + TypeScript frontend
 │   ├── api/                        # Vercel serverless functions (deployed)
-│   │   ├── _lib/                   # supabaseAdmin, auth, rooms, judge0 helpers
+│   │   ├── _lib/                   # supabaseAdmin, auth, rooms, gemini helpers
 │   │   ├── rooms/                  # POST/GET /api/rooms, GET/PATCH /api/rooms/:slug
 │   │   ├── catchup.ts              # GET /api/catchup — last snapshot for late joiners
 │   │   ├── snapshot.ts             # POST /api/snapshot — debounced full-doc persistence
-│   │   └── execute.ts              # POST /api/execute — quota-checked Judge0 proxy
+│   │   └── execute.ts              # POST /api/execute — quota-checked Gemini proxy
 │   ├── src/
 │   │   ├── hooks/
 │   │   │   ├── useRealtimeChannel.ts # Supabase Realtime broadcast+presence transport
@@ -151,8 +152,8 @@ CRDT/
 ├── executor/               # Legacy code execution microservice (local Docker dev only)
 │   ├── src/
 │   │   ├── index.ts                # Express HTTP server, POST /execute
-│   │   ├── judge0-runner.ts        # Calls Judge0 CE (hosted sandboxed execution API)
-│   │   └── languages.ts            # Language config (Judge0 language_id, limits)
+│   │   ├── gemini-runner.ts        # Calls Gemini API (real sandbox for Python, simulated for JS/Java)
+│   │   └── languages.ts            # Language config, limits
 │   └── Dockerfile
 ├── server/                 # Legacy Node.js WebSocket server (local Docker dev only)
 │   ├── src/
