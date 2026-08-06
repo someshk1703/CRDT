@@ -6,6 +6,7 @@ import { createRoom, listRooms, type RoomInfo } from '../hooks/useRooms';
 const s: Record<string, React.CSSProperties> = {
   root: { minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2rem', padding: '2rem' },
   heading: { fontSize: '2rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0, fontFamily: 'var(--font-sans)' },
+  headingRow: { display: 'flex', alignItems: 'center', gap: '0.9rem' },
   card: { display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%', maxWidth: '440px', padding: '1.5rem 2rem' },
   label: { fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' },
   avatar: { width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' as const },
@@ -46,7 +47,10 @@ export function Home() {
     const inIframe = window.self !== window.top;
     return (
       <div className="crdt-page" style={s.root}>
-        <h1 style={s.heading}>CRDT Collaborative Editor</h1>
+        <div style={s.headingRow}>
+          <img src="/ex-crdt-logo.jpg" alt="EX-CRDT logo" className="crdt-logo" />
+          <h1 style={s.heading}>CRDT Collaborative Editor</h1>
+        </div>
         <p style={{ color: 'var(--text-secondary)', textAlign: 'center', margin: 0 }}>
           Real-time collaborative code editing powered by the RGA CRDT algorithm.
         </p>
@@ -77,7 +81,10 @@ export function Home() {
 
       {/* Main */}
       <div style={{ ...s.root, justifyContent: 'flex-start', paddingTop: '3rem' }}>
-        <h1 style={s.heading}>CRDT Collaborative Editor</h1>
+        <div style={s.headingRow}>
+          <img src="/ex-crdt-logo.jpg" alt="EX-CRDT logo" className="crdt-logo" />
+          <h1 style={s.heading}>CRDT Collaborative Editor</h1>
+        </div>
 
         <div className="crdt-box" style={s.card}>
           <button className="crdt-btn crdt-btn-run" onClick={() => void handleCreateRoom()} disabled={creating}>

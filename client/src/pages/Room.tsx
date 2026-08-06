@@ -5,6 +5,7 @@ import { Compartment } from '@codemirror/state';
 import { useRealtimeChannel } from '../hooks/useRealtimeChannel';
 import { useCRDT } from '../hooks/useCRDT';
 import { usePresence } from '../hooks/usePresence';
+import { useVoiceChat } from '../hooks/useVoiceChat';
 import { useSession } from '../hooks/useSession';
 import { getRoom, renameRoom, getCatchup, saveSnapshot, executeCode, type RoomInfo } from '../hooks/useRooms';
 import { getLanguageExtension, getLanguageBoilerplate } from '../extensions/languageSwitcher';
@@ -145,6 +146,13 @@ export function Room() {
     send: (msg) => sendFnRef.current(msg),
   });
 
+  // ── useVoiceChat (real-time mic audio between everyone in the room) ────────
+
+  const { micOn, toggleMic, remoteStreams, voicePeerCount, handleSignal: handleVoiceSignal, handlePeerLeft } = useVoiceChat({
+    userId: session?.user.id ?? 'anon',
+    send: (msg) => sendFnRef.current(msg),
+  });
+
   const handleMessage = useCallback(
     (msg: Parameters<typeof applyRemoteOp>[0]) => {
       applyRemoteOp(msg);
@@ -152,6 +160,12 @@ export function Room() {
 
       const raw = msg as Record<string, unknown>;
       const type = raw['type'];
+
+      handleVoiceSignal(raw);
+      if (type === 'user-left') {
+        const leftId = raw['userId'];
+        if (typeof leftId === 'string') handlePeerLeft(leftId);
+      }
 
       // room-meta: update room name
       if (type === 'room-meta') {
@@ -196,7 +210,7 @@ export function Room() {
         ]);
       }
     },
-    [applyRemoteOp, handlePresenceMessage],
+    [applyRemoteOp, handlePresenceMessage, handleVoiceSignal, handlePeerLeft],
   );
 
   const { send, status } = useRealtimeChannel(catchupDone ? (roomId ?? null) : null, self, handleMessage);
@@ -399,7 +413,7 @@ export function Room() {
 
   return (
     <div className="crdt-page" style={{ display: 'flex', flexDirection: 'column', height: '100vh', padding: '1.25rem' }}>
-      <div className="crdt-box" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <div className="crdt-box crdt-box--live" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <Toolbar
           roomName={roomInfo?.name ?? roomId}
           roomSlug={roomId}
@@ -430,6 +444,9 @@ export function Room() {
           connectedUsers={connectedUsers}
           isRunning={isRunning}
           onRun={runCode}
+          micOn={micOn}
+          onToggleMic={toggleMic}
+          voicePeerCount={voicePeerCount}
         />
         <div
           ref={editorContainerRef}
@@ -445,6 +462,14 @@ export function Room() {
             Connection error — retrying…
           </div>
         )}
+        {/* Hidden players for remote peers' mic audio */}
+        {Object.entries(remoteStreams).map(([peerId, stream]) => (
+          <audio
+            key={peerId}
+            autoPlay
+            ref={(el) => { if (el) el.srcObject = stream; }}
+          />
+        ))}
       </div>
     </div>
   );
