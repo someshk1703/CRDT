@@ -18,25 +18,30 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
   const user = await requireUser(req, res);
   if (!user) return;
 
-  if (req.method === 'GET') {
-    const room = await getRoomBySlug(slug);
-    if (!room) { res.status(404).json({ error: 'Room not found' }); return; }
-    res.status(200).json(room);
-    return;
+  try {
+    if (req.method === 'GET') {
+      const room = await getRoomBySlug(slug);
+      if (!room) { res.status(404).json({ error: 'Room not found' }); return; }
+      res.status(200).json(room);
+      return;
+    }
+
+    if (req.method === 'PATCH') {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const name = typeof body['name'] === 'string' ? body['name'].trim() : '';
+      if (!name) { res.status(400).json({ error: 'name must be a non-empty string' }); return; }
+
+      const room = await getRoomBySlug(slug);
+      if (!room) { res.status(404).json({ error: 'Room not found' }); return; }
+
+      const updated = await updateRoomName(slug, name);
+      res.status(200).json(updated);
+      return;
+    }
+
+    res.status(405).json({ error: 'Method not allowed' });
+  } catch (err) {
+    console.error('api/rooms/[slug] error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Internal server error' });
   }
-
-  if (req.method === 'PATCH') {
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const name = typeof body['name'] === 'string' ? body['name'].trim() : '';
-    if (!name) { res.status(400).json({ error: 'name must be a non-empty string' }); return; }
-
-    const room = await getRoomBySlug(slug);
-    if (!room) { res.status(404).json({ error: 'Room not found' }); return; }
-
-    const updated = await updateRoomName(slug, name);
-    res.status(200).json(updated);
-    return;
-  }
-
-  res.status(405).json({ error: 'Method not allowed' });
 }

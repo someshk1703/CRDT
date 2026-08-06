@@ -28,13 +28,12 @@ services:
       # Mount the host Docker socket so the executor can `docker run` real
       # sandboxed containers per execution (see executor/src/docker-runner.ts).
       # Local dev only — Railway has no socket to mount, so it falls back to
-      # the Judge0 hosted sandbox there instead.
+      # Gemini there instead.
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - PORT=3002
-      - JUDGE0_API_URL=${JUDGE0_API_URL:-https://judge0-ce.p.rapidapi.com}
-      - JUDGE0_API_KEY=${JUDGE0_API_KEY}
-      - JUDGE0_API_HOST=${JUDGE0_API_HOST:-judge0-ce.p.rapidapi.com}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3002/health']
       interval: 10s

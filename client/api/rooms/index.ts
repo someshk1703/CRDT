@@ -10,27 +10,32 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
   const user = await requireUser(req, res);
   if (!user) return;
 
-  if (req.method === 'POST') {
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const name = typeof body['name'] === 'string' && body['name'].trim() ? body['name'].trim() : 'Untitled Room';
-    const language = typeof body['language'] === 'string' ? body['language'] : 'javascript';
+  try {
+    if (req.method === 'POST') {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const name = typeof body['name'] === 'string' && body['name'].trim() ? body['name'].trim() : 'Untitled Room';
+      const language = typeof body['language'] === 'string' ? body['language'] : 'javascript';
 
-    if (!SUPPORTED_LANGUAGES.has(language)) {
-      res.status(422).json({ error: `Unsupported language: ${language}` });
+      if (!SUPPORTED_LANGUAGES.has(language)) {
+        res.status(422).json({ error: `Unsupported language: ${language}` });
+        return;
+      }
+
+      const slug = await generateUniqueSlug();
+      const room = await createRoom(slug, name, language, user.id);
+      res.status(201).json(room);
       return;
     }
 
-    const slug = await generateUniqueSlug();
-    const room = await createRoom(slug, name, language, user.id);
-    res.status(201).json(room);
-    return;
-  }
+    if (req.method === 'GET') {
+      const rooms = await getRecentRoomsForUser(user.id);
+      res.status(200).json({ rooms });
+      return;
+    }
 
-  if (req.method === 'GET') {
-    const rooms = await getRecentRoomsForUser(user.id);
-    res.status(200).json({ rooms });
-    return;
+    res.status(405).json({ error: 'Method not allowed' });
+  } catch (err) {
+    console.error('api/rooms error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Internal server error' });
   }
-
-  res.status(405).json({ error: 'Method not allowed' });
 }

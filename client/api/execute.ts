@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { requireUser, applyCors } from './_lib/auth.js';
 import { supabaseAdmin } from './_lib/supabaseAdmin.js';
-import { runViaJudge0, MAX_CODE_BYTES, LANGUAGE_IDS, type SupportedLanguage } from './_lib/judge0.js';
+import { runViaGemini, MAX_CODE_BYTES, LANGUAGE_IDS, type SupportedLanguage } from './_lib/gemini.js';
 import type { ApiRequest, ApiResponse } from './_lib/http.js';
 
 /**
@@ -17,7 +17,7 @@ function startOfTodayUTC(): Date {
   return d;
 }
 
-/** POST /api/execute { roomId, language, code } — quota-checked Judge0 proxy. */
+/** POST /api/execute { roomId, language, code } — quota-checked Gemini execution proxy. */
 export default async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
   applyCors(req, res);
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
@@ -57,7 +57,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
     return;
   }
 
-  // ── Cache: skip Judge0 + quota burn for an identical recent submission ───
+  // ── Cache: skip Gemini + quota burn for an identical recent submission ───
   const hash = createHash('sha256').update(`${language}:${code}`).digest('hex');
   const { data: cached } = await supabaseAdmin
     .from('execution_cache')
@@ -70,16 +70,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
     return;
   }
 
-  // Prefer the self-hosted VPS executor (real Docker sandbox) when configured;
-  // fall back to Judge0 CE if EXECUTOR_URL isn't set or the executor errors out
-  // with 'service-unavailable' (host down, box rebooting, etc.).
-  let result = process.env['EXECUTOR_URL']
-    ? await runViaExecutor(language as SupportedLanguage, code)
-    : await runViaJudge0(language as SupportedLanguage, code);
-
-  if (!result.ok && result.reason === 'service-unavailable' && process.env['EXECUTOR_URL']) {
-    result = await runViaJudge0(language as SupportedLanguage, code);
-  }
+  const result = await runViaGemini(language as SupportedLanguage, code);
 
   // Every real execution (success or failure) counts against the shared quota.
   await supabaseAdmin.from('executions').insert({ user_id: user.id, created_at: new Date().toISOString() });

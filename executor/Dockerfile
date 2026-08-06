@@ -3,7 +3,7 @@ WORKDIR /app
 
 # docker CLI only — talks to the host daemon via the socket mounted in
 # docker-compose.yml (local dev). Harmless no-op on Railway, which has no
-# socket to mount, so isDockerAvailable() there just falls back to Judge0.
+# socket to mount, so isDockerAvailable() there just falls back to Gemini.
 RUN apk add --no-cache docker-cli
 
 COPY package.json ./

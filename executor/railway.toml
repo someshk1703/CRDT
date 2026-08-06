@@ -4,8 +4,8 @@
 # package, so set this service's Root Directory to "executor" (not blank) in
 # the dashboard, and point "Config File Path" to /executor/railway.toml.
 #
-# Required service variables: JUDGE0_API_KEY (RapidAPI key for Judge0 CE).
-# Optional: JUDGE0_API_URL, JUDGE0_API_HOST (only if using a different Judge0 host).
+# Required service variables: GEMINI_API_KEY (Google AI Studio key).
+# Optional: GEMINI_MODEL (defaults to gemini-2.5-flash).
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"

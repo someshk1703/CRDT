@@ -1,7 +1,7 @@
 import express, { Request, Response } from "express";
 import { execFileSync } from "child_process";
 import { runInDocker } from "./docker-runner.js";
-import { runViaJudge0 } from "./judge0-runner.js";
+import { runViaGemini } from "./gemini-runner.js";
 import { runDirect } from "./direct-runner.js";
 import { LANGUAGES, MAX_CODE_BYTES, SupportedLanguage } from "./languages.js";
 import type { StreamCallback, DoneCallback, ErrorCallback } from "./types.js";
@@ -24,11 +24,12 @@ function isDockerAvailable(): boolean {
 const DOCKER_AVAILABLE = isDockerAvailable();
 
 // Prefer real per-request container sandboxing when Docker is reachable (local
-// dev via docker-compose's mounted socket). Otherwise fall back to the hosted
-// Judge0 sandbox (works anywhere, incl. Railway, no Docker daemon required).
-// Only fall back further to unsandboxed direct execution if neither is usable —
-// this should never happen outside a bare local dev machine with no Docker and
-// no JUDGE0_API_KEY configured.
+// dev via docker-compose's mounted socket). Otherwise fall back to Gemini
+// (works anywhere, incl. Railway, no Docker daemon required — real sandboxed
+// execution for Python, simulated output for JS/Java). Only fall back further
+// to unsandboxed direct execution if neither is usable — this should never
+// happen outside a bare local dev machine with no Docker and no GEMINI_API_KEY
+// configured.
 let runCode: (
   language: SupportedLanguage,
   code: string,
@@ -40,11 +41,11 @@ let runCode: (
 if (DOCKER_AVAILABLE) {
   console.log("[executor] Docker available — using per-request container sandboxing");
   runCode = runInDocker;
-} else if (process.env.JUDGE0_API_KEY) {
-  console.log("[executor] Docker unavailable — using Judge0 CE hosted sandbox");
-  runCode = runViaJudge0;
+} else if (process.env.GEMINI_API_KEY) {
+  console.log("[executor] Docker unavailable — using Gemini for execution");
+  runCode = runViaGemini;
 } else {
-  console.warn("[executor] Docker unavailable and JUDGE0_API_KEY unset — falling back to UNSANDBOXED direct execution (dev only)");
+  console.warn("[executor] Docker unavailable and GEMINI_API_KEY unset — falling back to UNSANDBOXED direct execution (dev only)");
   runCode = runDirect;
 }
 
@@ -54,7 +55,7 @@ if (!EXECUTOR_AUTH_TOKEN) {
 }
 
 app.get("/health", (_req: Request, res: Response) => {
-  res.json({ status: "ok", service: "crdt-executor", runner: DOCKER_AVAILABLE ? "docker" : process.env.JUDGE0_API_KEY ? "judge0" : "direct" });
+  res.json({ status: "ok", service: "crdt-executor", runner: DOCKER_AVAILABLE ? "docker" : process.env.GEMINI_API_KEY ? "gemini" : "direct" });
 });
 
 /** Requires `Authorization: Bearer <EXECUTOR_AUTH_TOKEN>` when that env var is configured. */

@@ -102,7 +102,7 @@ export interface ExecResult {
   remaining?: number;
 }
 
-/** Runs code via the quota-checked /api/execute Judge0 proxy. Never throws for expected failures (quota, Judge0 errors) — check `result.ok`. */
+/** Runs code via the quota-checked /api/execute Gemini proxy. Never throws for expected failures (quota, Gemini errors) — check `result.ok`. */
 export async function executeCode(roomId: string, language: string, code: string): Promise<ExecResult> {
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/api/execute`, {
