@@ -17,9 +17,9 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     height: '200px',
-    background: '#11111b',
-    borderTop: '1px solid #313244',
-    fontFamily: '"JetBrains Mono", "Fira Mono", "Cascadia Code", monospace',
+    background: 'var(--bg-primary)',
+    borderTop: '1px solid var(--border-color)',
+    fontFamily: 'var(--font-mono)',
     fontSize: '13px',
   },
   header: {
@@ -27,14 +27,14 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '0.5rem',
     padding: '0.3rem 0.75rem',
-    background: '#181825',
-    borderBottom: '1px solid #313244',
+    background: 'var(--bg-tertiary)',
+    borderBottom: '1px solid var(--border-color)',
     flexShrink: 0,
   },
   title: {
-    color: '#a6adc8',
+    color: 'var(--text-secondary)',
     fontSize: '0.8rem',
-    fontFamily: 'system-ui, sans-serif',
+    fontFamily: 'var(--font-sans)',
     fontWeight: 600,
     flex: 1,
   },
@@ -45,13 +45,8 @@ const s: Record<string, React.CSSProperties> = {
   },
   clearBtn: {
     padding: '0.15rem 0.5rem',
-    borderRadius: '4px',
-    border: '1px solid #45475a',
-    background: 'transparent',
-    color: '#6c7086',
     fontSize: '0.75rem',
-    cursor: 'pointer',
-    fontFamily: 'system-ui, sans-serif',
+    fontFamily: 'var(--font-sans)',
   },
   body: {
     flex: 1,
@@ -66,19 +61,20 @@ const s: Record<string, React.CSSProperties> = {
     lineHeight: '1.5',
   },
   empty: {
-    color: '#45475a',
+    color: 'var(--text-muted)',
     fontStyle: 'italic',
-    fontFamily: 'system-ui, sans-serif',
+    fontFamily: 'var(--font-sans)',
     fontSize: '0.8rem',
     padding: '0.5rem 0',
   },
 };
 
 const STREAM_COLORS: Record<OutputLine['stream'], string> = {
-  stdout: '#cdd6f4',
-  stderr: '#f38ba8',
-  system: '#a6e3a1',
+  stdout: 'var(--text-primary)',
+  stderr: 'var(--accent-red)',
+  system: 'var(--accent-green)',
 };
+
 
 export function OutputPanel({ lines, isRunning, onClear }: OutputPanelProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -98,14 +94,14 @@ export function OutputPanel({ lines, isRunning, onClear }: OutputPanelProps) {
           <span
             style={{
               ...s.dot,
-              background: '#a6e3a1',
+              background: 'var(--accent-green)',
               animation: 'crdt-pulse 1s ease-in-out infinite',
             }}
             title="Running…"
           />
         )}
         <span style={s.title}>Output</span>
-        <button style={s.clearBtn} onClick={onClear} title="Clear output">
+        <button style={s.clearBtn} className="crdt-btn crdt-btn-secondary" onClick={onClear} title="Clear output">
           Clear
         </button>
       </div>

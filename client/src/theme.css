@@ -1,0 +1,112 @@
+/* EngineX "Night mode — Ink & Signal" palette, ported for the CRDT client */
+:root {
+  --bg-primary: #0F1115;
+  --bg-secondary: #171A20;
+  --bg-tertiary: #262A32;
+  --accent-cyan: #4C82FF;
+  --accent-cyan-glow: rgba(76, 130, 255, 0.28);
+  --accent-green: #E8A33D;
+  --accent-green-glow: rgba(232, 163, 61, 0.2);
+  --accent-red: #E05555;
+  --accent-red-glow: rgba(224, 85, 85, 0.18);
+  --border-color: #262A32;
+  --text-primary: #E8E6E1;
+  --text-secondary: #8B8F98;
+  --text-muted: #5a5e66;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  --font-sans: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+  --transition-speed: 0.2s;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+.crdt-page {
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+/* Card/"terminal-window" style box wrapping the editor */
+.crdt-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  transition: border-color var(--transition-speed), box-shadow var(--transition-speed);
+}
+.crdt-box:hover,
+.crdt-box:focus-within {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 20px var(--accent-cyan-glow), 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Accent buttons (matches EngineX .btn-console) */
+.crdt-btn {
+  padding: 0.35rem 0.85rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent-cyan);
+  background: transparent;
+  color: var(--accent-cyan);
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all var(--transition-speed);
+  white-space: nowrap;
+}
+.crdt-btn:hover:not(:disabled) {
+  background: var(--accent-cyan);
+  color: var(--bg-primary);
+  box-shadow: 0 0 15px var(--accent-cyan-glow);
+}
+.crdt-btn:disabled {
+  border-color: var(--text-muted);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.crdt-btn-run {
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+  font-weight: 700;
+}
+.crdt-btn-run:hover:not(:disabled) {
+  background: var(--accent-green);
+  color: var(--bg-primary);
+  box-shadow: 0 0 15px var(--accent-green-glow);
+}
+
+.crdt-btn-secondary {
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+.crdt-btn-secondary:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-cyan);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+.crdt-select,
+.crdt-input {
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  transition: all var(--transition-speed);
+}
+.crdt-select {
+  cursor: pointer;
+}
+.crdt-select:hover,
+.crdt-select:focus,
+.crdt-input:hover,
+.crdt-input:focus {
+  border-color: var(--accent-cyan);
+  outline: none;
+}

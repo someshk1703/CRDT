@@ -2,7 +2,8 @@
 .adt/
 .specify/
 plan/
-
+CHECKLIST.md
+specs/
 # Local npm registry override (public registry for this personal project)
 .npmrc
 
