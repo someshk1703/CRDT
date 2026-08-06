@@ -20,6 +20,9 @@ interface ToolbarProps {
   onThemeChange: (themeId: string) => void;
   onRun?: () => void;
   isRunning?: boolean;
+  micOn?: boolean;
+  onToggleMic?: () => void;
+  voicePeerCount?: number;
 }
 
 const MAX_VISIBLE_AVATARS = 5;
@@ -104,6 +107,9 @@ export function Toolbar({
   onThemeChange,
   onRun,
   isRunning = false,
+  micOn = false,
+  onToggleMic,
+  voicePeerCount = 0,
 }: ToolbarProps) {
   // Group themes by their group label
   const themeGroups = Object.entries(THEMES).reduce<Record<string, Array<[string, (typeof THEMES)[string]]>>>(
@@ -134,6 +140,8 @@ export function Toolbar({
 
   return (
     <div style={s.bar}>
+      <img src="/ex-crdt-logo.jpg" alt="EX-CRDT logo" className="crdt-logo" style={{ height: '28px', width: '28px' }} />
+
       {/* Room name */}
       {onRoomNameChange ? (
         <input
@@ -193,6 +201,17 @@ export function Toolbar({
       >
         {isRunning ? '⏳ Running…' : '▶ Run'}
       </button>
+
+      {/* Mic toggle — talk in real time with everyone else in the room */}
+      {onToggleMic && (
+        <button
+          className={`crdt-btn ${micOn ? 'crdt-btn-mic-live' : 'crdt-btn-secondary'}`}
+          onClick={onToggleMic}
+          title={micOn ? 'Turn mic off' : 'Turn mic on and talk with the room'}
+        >
+          {micOn ? `🎙️ Live${voicePeerCount > 0 ? ` (${voicePeerCount})` : ''}` : '🎤 Mic'}
+        </button>
+      )}
 
       {/* Avatar stack + user count */}
       <div style={s.avatarStack}>

@@ -24,24 +24,51 @@ body {
   font-family: var(--font-sans);
 }
 
+/* Page shell with a soft blurred glow backdrop (matches EngineX's glass panels) */
 .crdt-page {
+  position: relative;
   min-height: 100vh;
   background: var(--bg-primary);
+  isolation: isolate;
+}
+.crdt-page::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 15% 20%, var(--accent-cyan-glow), transparent 45%),
+    radial-gradient(circle at 85% 75%, var(--accent-green-glow), transparent 45%);
+  filter: blur(90px);
+  pointer-events: none;
 }
 
-/* Card/"terminal-window" style box wrapping the editor */
+/* Card/"terminal-window" style box wrapping the editor — frosted glass over the blurred backdrop */
 .crdt-box {
-  background: var(--bg-secondary);
+  background: rgba(23, 26, 32, 0.85);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
   border: 1px solid var(--border-color);
   border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   transition: border-color var(--transition-speed), box-shadow var(--transition-speed);
 }
-.crdt-box:hover,
-.crdt-box:focus-within {
+/* Glow-on-hover is reserved for the main editing box (see .crdt-box--live) — enabling it on
+   every small card caused a "double border" look when the card just wraps a single button,
+   since hovering the button also triggers the ancestor card's :hover. */
+.crdt-box--live:hover,
+.crdt-box--live:focus-within {
   border-color: var(--accent-cyan);
   box-shadow: 0 0 20px var(--accent-cyan-glow), 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.crdt-logo {
+  height: 40px;
+  width: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 /* Accent buttons (matches EngineX .btn-console) */
@@ -56,11 +83,16 @@ body {
   cursor: pointer;
   transition: all var(--transition-speed);
   white-space: nowrap;
+  outline: none;
 }
 .crdt-btn:hover:not(:disabled) {
   background: var(--accent-cyan);
+  border-color: var(--accent-cyan);
   color: var(--bg-primary);
-  box-shadow: 0 0 15px var(--accent-cyan-glow);
+  box-shadow: 0 0 0 3px var(--accent-cyan-glow), 0 0 20px var(--accent-cyan-glow);
+}
+.crdt-btn:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-cyan-glow);
 }
 .crdt-btn:disabled {
   border-color: var(--text-muted);
@@ -75,8 +107,12 @@ body {
 }
 .crdt-btn-run:hover:not(:disabled) {
   background: var(--accent-green);
+  border-color: var(--accent-green);
   color: var(--bg-primary);
-  box-shadow: 0 0 15px var(--accent-green-glow);
+  box-shadow: 0 0 0 3px var(--accent-green-glow), 0 0 20px var(--accent-green-glow);
+}
+.crdt-btn-run:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-green-glow);
 }
 
 .crdt-btn-secondary {
@@ -87,7 +123,28 @@ body {
   background: var(--bg-tertiary);
   border-color: var(--accent-cyan);
   color: var(--text-primary);
-  box-shadow: none;
+  box-shadow: 0 0 0 3px var(--accent-cyan-glow);
+}
+.crdt-btn-secondary:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-cyan-glow);
+}
+
+/* Mic toggle — pulses while live, matching OutputPanel's "running" indicator */
+.crdt-btn-mic-live {
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+  background: var(--accent-red-glow);
+  animation: crdt-mic-pulse 1.6s ease-in-out infinite;
+}
+.crdt-btn-mic-live:hover:not(:disabled) {
+  background: var(--accent-red);
+  border-color: var(--accent-red);
+  color: var(--bg-primary);
+  box-shadow: 0 0 0 3px var(--accent-red-glow), 0 0 20px var(--accent-red-glow);
+}
+@keyframes crdt-mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-red-glow); }
+  50% { box-shadow: 0 0 0 6px transparent; }
 }
 
 .crdt-select,
@@ -104,6 +161,7 @@ body {
   cursor: pointer;
 }
 .crdt-select:hover,
+
 .crdt-select:focus,
 .crdt-input:hover,
 .crdt-input:focus {
