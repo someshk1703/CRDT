@@ -7,7 +7,7 @@ import { useCRDT } from '../hooks/useCRDT';
 import { usePresence } from '../hooks/usePresence';
 import { useSession } from '../hooks/useSession';
 import { getRoom, renameRoom, getCatchup, saveSnapshot, executeCode, type RoomInfo } from '../hooks/useRooms';
-import { getLanguageExtension } from '../extensions/languageSwitcher';
+import { getLanguageExtension, getLanguageBoilerplate } from '../extensions/languageSwitcher';
 import { getThemeExtension, DEFAULT_THEME } from '../extensions/themeSwitcher';
 import { showMinimap } from '@replit/codemirror-minimap';
 import { Toolbar } from '../components/Toolbar';
@@ -395,6 +395,12 @@ export function Room() {
         onLanguageChange={(lang) => {
           setLanguage(lang);
           sendLanguageChange(lang);
+          // Seed the syntactic scaffold for the picked language, but only into
+          // a still-empty document — never clobber code someone already wrote.
+          const view = viewRef.current;
+          if (view && view.state.doc.length === 0) {
+            view.dispatch({ changes: { from: 0, to: 0, insert: getLanguageBoilerplate(lang) } });
+          }
         }}
         onRoomNameChange={(name) => {
           renameRoom(roomId, name).then((updated) => {

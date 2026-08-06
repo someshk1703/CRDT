@@ -275,3 +275,33 @@ export async function updateRoomName(roomId: string, name: string): Promise<{ id
   return data as { id: string; name: string };
 }
 
+/**
+ * Eviction policy: an owner may only keep `maxRooms` rooms at a time. Once a
+ * new room pushes them over the cap, the oldest excess rooms are deleted
+ * (cascades to room_members/operations/snapshots via FK ON DELETE CASCADE).
+ * Non-fatal — logged but never thrown, so it can't block room creation.
+ */
+export async function enforceRoomLimit(ownerId: string, maxRooms = 3): Promise<void> {
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('id, created_at')
+    .eq('owner_id', ownerId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error(`[db] enforceRoomLimit query failed owner=${ownerId}:`, error.message);
+    return;
+  }
+
+  const excess = (data ?? []).slice(maxRooms);
+  if (excess.length === 0) return;
+
+  const evictIds = excess.map((row) => row['id'] as string);
+  const { error: delError } = await supabase.from('rooms').delete().in('id', evictIds);
+  if (delError) {
+    console.error(`[db] enforceRoomLimit delete failed owner=${ownerId}:`, delError.message);
+    return;
+  }
+  console.log(`[db] enforceRoomLimit evicted rooms=${evictIds.join(',')} owner=${ownerId}`);
+}
+

@@ -1,5 +1,5 @@
 import { requireUser, applyCors } from '../_lib/auth.js';
-import { createRoom, generateUniqueSlug, getRecentRoomsForUser, SUPPORTED_LANGUAGES } from '../_lib/rooms.js';
+import { createRoom, generateUniqueSlug, getRecentRoomsForUser, enforceRoomLimit, SUPPORTED_LANGUAGES } from '../_lib/rooms.js';
 import type { ApiRequest, ApiResponse } from '../_lib/http.js';
 
 /** GET /api/rooms — list the caller's recent rooms. POST /api/rooms — create a room. */
@@ -23,6 +23,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
 
       const slug = await generateUniqueSlug();
       const room = await createRoom(slug, name, language, user.id);
+      await enforceRoomLimit(user.id);
       res.status(201).json(room);
       return;
     }
